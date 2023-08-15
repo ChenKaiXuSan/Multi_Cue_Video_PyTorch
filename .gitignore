@@ -1,3 +1,12 @@
+/*
+ * Filename: /workspace/Multi_Cue_Video_PyTorch/.gitignore
+ * Path: /workspace/Multi_Cue_Video_PyTorch
+ * Created Date: Tuesday, August 1st 2023, 10:16:36 am
+ * Author: chenkaixu
+ * 
+ * Copyright (c) 2023 Your Company
+ */
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -127,3 +136,5 @@ venv.bak/
 lightning_logs/
 MNIST
 .DS_Store
+
+logs
