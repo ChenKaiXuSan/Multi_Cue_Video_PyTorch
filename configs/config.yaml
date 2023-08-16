@@ -6,7 +6,7 @@ hydra:
 # group by defaults
 defaults:
   - optimizer: adam
-  - data: split_pad
+  - data: seg
 
 model:
   model: 'resnet'
@@ -19,9 +19,6 @@ YOLO:
   seg_ckpt: '/workspace/Multi_Cue_Video_PyTorch/ckpt/yolov8x-seg.pt'
   conf: 0.5
   iou: 0.5
-
-
-
 
 train:
   # Training config

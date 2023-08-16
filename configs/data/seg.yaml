@@ -1,0 +1,3 @@
+data_path: "/workspace/data/segmentation_dataset_512/"
+num_workers: 8
+img_size: 224

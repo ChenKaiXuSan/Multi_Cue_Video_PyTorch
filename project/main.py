@@ -7,7 +7,7 @@ Author: chenkaixu
 this project were based the pytorch, pytorch lightning and pytorch video library, 
 for rapid development.
 -----
-Last Modified: 2023-08-15 15:26:04
+Last Modified: 2023-08-16 15:46:28
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -60,7 +60,6 @@ def train(hparams, fold:int):
         mode="max",
         save_last=False,
         save_top_k=2,
-
     )
 
     # define the early stop.

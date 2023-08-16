@@ -10,7 +10,7 @@ from main.py, define the train and val process logic.
  
 Have a good code time!
 -----
-Last Modified: 2023-08-15 15:34:44
+Last Modified: 2023-08-16 15:58:40
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -76,7 +76,7 @@ class MultiCueLightningModule(LightningModule):
 
         b, c, t, h, w = video.shape
 
-        optical_flow, mask, pose = self.preprocess(video)
+        optical_flow, mask, pose = self.preprocess(video, batch_idx)
 
 
     def validation_step(self, batch: torch.Tensor, batch_idx: int):
@@ -97,7 +97,7 @@ class MultiCueLightningModule(LightningModule):
         b, c, t, h, w = video.shape
 
         # ? 做不同融合的时候，需要不同的信息，这个怎么办
-        optical_flow, mask, pose = self.preprocess(video)
+        optical_flow, mask, pose = self.preprocess(video, batch_idx)
 
         # pred the video frames
         # with torch.no_grad():
