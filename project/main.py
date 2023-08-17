@@ -7,7 +7,7 @@ Author: chenkaixu
 this project were based the pytorch, pytorch lightning and pytorch video library, 
 for rapid development.
 -----
-Last Modified: 2023-08-16 15:46:28
+Last Modified: 2023-08-17 12:44:37
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -80,7 +80,7 @@ def train(hparams, fold:int):
                       logger=tb_logger,
                       #   log_every_n_steps=100,
                       check_val_every_n_epoch=1,
-                      callbacks=[progress_bar, rich_model_summary, table_metrics_callback, monitor, model_check_point, early_stopping],
+                    #   callbacks=[progress_bar, rich_model_summary, table_metrics_callback, monitor, model_check_point, early_stopping],
                       #   deterministic=True
                       )
 
@@ -90,7 +90,7 @@ def train(hparams, fold:int):
     Acc_list = trainer.validate(classification_module, data_module, ckpt_path='best')
 
     # return the best acc score.
-    return model_check_point.best_model_score.item()
+    # return model_check_point.best_model_score.item()
 
 @hydra.main(version_base=None, config_path="/workspace/Multi_Cue_Video_PyTorch/configs", config_name="config.yaml")
 def init_params(config, ):

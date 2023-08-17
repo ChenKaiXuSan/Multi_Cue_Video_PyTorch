@@ -9,7 +9,7 @@ The python file to process the RGB frames, clac the OF and mask, and return them
  
 Have a good code time!
 -----
-Last Modified: 2023-08-16 16:43:10
+Last Modified: 2023-08-17 08:59:38
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -49,8 +49,8 @@ class Preprocess(nn.Module):
             batch_idx (int): epoch index.
         """        
         pref_Path = Path('/workspace/Multi_Cue_Video_PyTorch/logs/img_test')
-        # only rmtree in 1 epoch, and in one flag (optical flow).
-        if pref_Path.exists() and epoch_idx == 0 and flag == 'optical_flow':
+        # only rmtree in 1 epoch, and in one flag (mask).
+        if pref_Path.exists() and epoch_idx == 0 and flag == 'mask':
             shutil.rmtree(pref_Path)
             pref_Path.mkdir(parents=True)
             
@@ -69,7 +69,21 @@ class Preprocess(nn.Module):
                 
         print('finish save %s' % flag)
 
-    def forward(self, batch: torch.tensor, batch_idx: int):
+    def shape_check(self, check: list):
+
+        b, c, t, h, w = check[0].shape
+
+        # frame check
+        for ck in check[0:]:
+            # for label shape
+            if len(ck.shape) == 1: assert ck.shape[0] == b 
+            # for other shape
+            else: assert ck.shape[2] == t
+
+    def process_batch():
+        pass
+
+    def forward(self, batch: torch.tensor, labels: list, batch_idx: int):
         """
         forward preprocess method for one batch, use yolo and RAFT.
 
@@ -87,11 +101,20 @@ class Preprocess(nn.Module):
         # * slove, 因为不同epoch覆盖了，加一个batch_idx在最开始防止覆盖
         # ? raft这个方法有问题，有些图片预测出来的样子很奇怪。感觉是transform的问题，但是确认了代码，没什么问题。
         
-        optical_flow = self.of_model(batch)
-        self.save_img(optical_flow, flag='optical_flow', epoch_idx=batch_idx)
-        mask, pose = self.yolo_model(batch)
+        # process mask, pose
+        video, labels, mask, pose = self.yolo_model(batch, labels)
+
+        # shape check
+        self.shape_check([video, labels, mask, pose])
+
         self.save_img(mask, flag='mask', epoch_idx=batch_idx)
+
+        # process optical flow
+        optical_flow = self.of_model(video)
         
-        return optical_flow, mask, pose
+        # shape check
+        self.shape_check([video, optical_flow])
 
-
+        self.save_img(optical_flow, flag='optical_flow', epoch_idx=batch_idx)
+        
+        return video, labels, optical_flow, mask, pose

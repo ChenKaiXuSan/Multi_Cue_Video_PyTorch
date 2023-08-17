@@ -10,7 +10,7 @@ from main.py, define the train and val process logic.
  
 Have a good code time!
 -----
-Last Modified: 2023-08-16 15:58:40
+Last Modified: 2023-08-17 12:13:05
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -76,20 +76,14 @@ class MultiCueLightningModule(LightningModule):
 
         b, c, t, h, w = video.shape
 
-        optical_flow, mask, pose = self.preprocess(video, batch_idx)
+        video, label, optical_flow, mask, pose = self.preprocess(video, label, batch_idx)
+        logging.info('*' * 50)
+        logging.info([video.shape, label.shape, optical_flow.shape, mask.shape, pose.shape])
+        
 
 
     def validation_step(self, batch: torch.Tensor, batch_idx: int):
-        '''
-        val step when trainer.fit called.
-
-        Args:
-            batch (torch.Tensor): b, f, h, w
-            batch_idx (int): batch index, or patient index
-
-        Returns: None
-        '''
-
+        
         # input and model define
         video = batch['video'].detach()  # b, c, t, h, w
         label = batch['label'].detach()  # b
@@ -97,7 +91,9 @@ class MultiCueLightningModule(LightningModule):
         b, c, t, h, w = video.shape
 
         # ? 做不同融合的时候，需要不同的信息，这个怎么办
-        optical_flow, mask, pose = self.preprocess(video, batch_idx)
+        video, label, optical_flow, mask, pose = self.preprocess(video, label, batch_idx)
+        logging.info('*' * 50)
+        logging.info([video.shape, label.shape, optical_flow.shape, mask.shape, pose.shape])
 
         # pred the video frames
         # with torch.no_grad():
@@ -129,10 +125,10 @@ class MultiCueLightningModule(LightningModule):
 
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer),
-                "monitor": "val_loss",
-            },
+            # "lr_scheduler": {
+            #     "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer),
+            #     "monitor": "val_loss",
+            # },
         }
         # return torch.optim.SGD(self.parameters(), lr=self.lr)
 
