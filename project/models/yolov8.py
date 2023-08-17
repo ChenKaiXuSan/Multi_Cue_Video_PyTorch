@@ -10,24 +10,20 @@ The yolov8 ckpt from ultralytics.
  
 Have a good code time!
 -----
-Last Modified: 2023-08-17 11:05:01
+Last Modified: 2023-08-17 14:32:37
 Modified By: chenkaixu
 -----
 HISTORY:
 Date 	By 	Comments
 ------------------------------------------------
+2023-08-17	KX.C	finish the logic for different process. Notice here we seperate treat different method None value.
 2023-08-17	KX.C	需要分开处理检测None的问题，不能一起处理。
 
 '''
 
 # %%
 import torch
-from torchvision.transforms.functional import crop, pad, resize
-from torchvision.io import read_video
-
-import os, logging, sys, shutil
-
-import matplotlib.pyplot as plt
+import logging
 
 from ultralytics import YOLO
 
@@ -44,7 +40,16 @@ class MultiPreprocess(torch.nn.Module):
         self.conf = configs.conf
         self.iou = configs.iou
 
-    def get_YOLO_pose_result(self, frame_batch):
+    def get_YOLO_pose_result(self, frame_batch: torch.tensor):
+        """
+        get_YOLO_pose_result, from frame_batch, which (c, t, h, w)
+
+        Args:
+            frame_batch (torch.tensor): for processed frame batch, (c, t, h, w)
+
+        Returns:
+            dict, list: two return value, with one batch keypoint in Dict, and none index in list.
+        """
 
         c, t, h, w = frame_batch.shape
 
@@ -62,11 +67,20 @@ class MultiPreprocess(torch.nn.Module):
                 none_index.append(i)
                 one_batch_keypoint[i] = None
             else:
-                one_batch_keypoint[i] = r.keypoints.xy # 1, 17
+                one_batch_keypoint[i] = r.keypoints.xy  # 1, 17
 
         return one_batch_keypoint, none_index
 
-    def get_YOLO_mask_result(self, frame_batch):
+    def get_YOLO_mask_result(self, frame_batch: torch.tensor):
+        """
+        get_YOLO_mask_result, from frame_batch, for mask.
+
+        Args:
+            frame_batch (torch.tensor): for processed frame batch, (c, t, h, w)
+
+        Returns:
+            dict, list: two return values, with one batch mask in Dict, and none index in list.
+        """
 
         c, t, h, w = frame_batch.shape
 
@@ -76,7 +90,7 @@ class MultiPreprocess(torch.nn.Module):
 
         one_batch_mask = {}
         none_index = []
-        
+
         for i, r in enumerate(results):
             # judge if have mask.
             if r.masks is None:
@@ -84,26 +98,50 @@ class MultiPreprocess(torch.nn.Module):
                 one_batch_mask[i] = None
             elif list(r.masks.data.shape) == [1, 224, 224]:
                 one_batch_mask[i] = r.masks.data  # 1, 224, 224
-            else: # when mask > 2, just use the first mask.
-                one_batch_mask[i] = r.masks.data[:1, ...] # 1, 224, 224
+            else:
+                # when mask > 2, just use the first mask.
+                # ? sometime will get two type for masks.
+                one_batch_mask[i] = r.masks.data[:1, ...]  # 1, 224, 224
 
         return one_batch_mask, none_index
 
-    def delete_tensor(self, video: torch.tensor, delete_idx: int, next_idx:int):
+    def delete_tensor(self, video: torch.tensor, delete_idx: int, next_idx: int):
+        """
+        delete_tensor, from video, we delete the delete_idx tensor and insert the next_idx tensor.
+
+        Args:
+            video (torch.tensor): video tensor for process.
+            delete_idx (int): delete tensor index.
+            next_idx (int): insert tensor index.
+
+        Returns:
+            torch.tensor: deleted and processed video tensor.
+        """
+
         c, t, h, w = video.shape
         left = video[:, :delete_idx, ...]
         right = video[:, delete_idx+1:, ...]
         insert = video[:, next_idx, ...].unsqueeze(dim=1)
 
         ans = torch.cat([left, insert, right], dim=1)
-        
-        # check frame 
+
+        # check frame
         assert ans.shape[1] == t
         return ans
-    
-    def process_none(self, batch_Dict: dict, none_index: list):
 
-        boundary = len(batch_Dict)-1 # 8
+    def process_none(self, batch_Dict: dict, none_index: list):
+        """
+        process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
+
+        Args:
+            batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
+            none_index (list): none index list map to batch_Dict, here not use this.
+
+        Returns:
+            list: list include the replace value for None value.
+        """
+
+        boundary = len(batch_Dict)-1  # 8
 
         for k, v in batch_Dict.items():
             if v == None:
@@ -112,12 +150,11 @@ class MultiPreprocess(torch.nn.Module):
                 else:
                     next_idx = k+1
                     while batch_Dict[next_idx] == None and next_idx < boundary:
-                        next_idx += 1 
-                
+                        next_idx += 1
+
                 batch_Dict[k] = batch_Dict[next_idx]
 
         return list(batch_Dict.values())
-
 
     def process_batch(self, batch: torch.Tensor, labels: list):
 
@@ -128,10 +165,14 @@ class MultiPreprocess(torch.nn.Module):
         pred_keypoint_list = []
 
         for batch_index in range(b):
-            one_batch_mask_Dict, one_mask_none_index = self.get_YOLO_mask_result(batch[batch_index])
-            one_batch_mask = self.process_none(one_batch_mask_Dict, one_mask_none_index)
-            one_batch_keypoint_Dict, one_pose_none_index = self.get_YOLO_pose_result(batch[batch_index])
-            one_batch_keypoint = self.process_none(one_batch_keypoint_Dict, one_pose_none_index)
+            one_batch_mask_Dict, one_mask_none_index = self.get_YOLO_mask_result(
+                batch[batch_index])
+            one_batch_mask = self.process_none(
+                one_batch_mask_Dict, one_mask_none_index)
+            one_batch_keypoint_Dict, one_pose_none_index = self.get_YOLO_pose_result(
+                batch[batch_index])
+            one_batch_keypoint = self.process_none(
+                one_batch_keypoint_Dict, one_pose_none_index)
 
             # none index union check
             # unio_none_list = list(set(one_mask_none_index).union(set(one_pose_none_index)))
@@ -155,12 +196,6 @@ class MultiPreprocess(torch.nn.Module):
             # else:
             #     process_batch_list.append(batch[batch_index]) # c, t, h, w
 
-            # shape check
-            try:
-                len(one_batch_mask) == len(one_batch_keypoint)
-            except IndexError:
-                logging.error(f'predict shape dont same, which {len(one_batch_mask)} and {len(one_batch_keypoint)}')
-            
             pred_mask_list.append(torch.stack(
                 one_batch_mask, dim=1))  # c, t, h, w
             pred_keypoint_list.append(torch.stack(
@@ -170,6 +205,19 @@ class MultiPreprocess(torch.nn.Module):
         return batch, labels, torch.stack(pred_mask_list, dim=0), torch.stack(pred_keypoint_list, dim=0)
 
     def forward(self, batch, labels):
-        
-        # return batch, label, mask, keypoint
-        return self.process_batch(batch, labels)
+
+        b, c, t, h, w, = batch.shape
+
+        # batch, (b, c, t, h, w)
+        # label, (b)
+        # mask, (b, 1, t, h, w)
+        # keypoint, (b, 1, t, 17, 2)
+        video, labels, mask, keypoint = self.process_batch(batch, labels)
+
+        # shape check
+        assert video.shape == batch.shape
+        assert labels.shape[0] == b
+        assert mask.shape[2] == t
+        assert keypoint[2] == t
+
+        return video, labels, mask, keypoint

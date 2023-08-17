@@ -9,12 +9,14 @@ The python file to process the RGB frames, clac the OF and mask, and return them
  
 Have a good code time!
 -----
-Last Modified: 2023-08-17 08:59:38
+Last Modified: 2023-08-17 14:21:01
 Modified By: chenkaixu
 -----
 HISTORY:
 Date 	By 	Comments
 ------------------------------------------------
+2023-08-17	KX.C	in batch size = 32, one fold will take about 30 min to take the preprocess method (yolo + optical flow).
+2023-08-17	KX.C	finish the preprocess method, in forward function.
 2023-08-15	KX.C	some promble with forward function.
 
 '''
@@ -22,6 +24,7 @@ Date 	By 	Comments
 import shutil
 from pathlib import Path
 from typing import Any
+
 import torch  
 import torch.nn as nn 
 import torch.nn.functional as F 
@@ -30,7 +33,6 @@ from torchvision.utils import flow_to_image
 
 from optical_flow import OpticalFlow
 from yolov8 import  MultiPreprocess
-from make_model import MakeVideoModule
 
 class Preprocess(nn.Module):
 
@@ -48,6 +50,7 @@ class Preprocess(nn.Module):
             flag (str): flag for filename, ['optical_flow', 'mask']
             batch_idx (int): epoch index.
         """        
+        
         pref_Path = Path('/workspace/Multi_Cue_Video_PyTorch/logs/img_test')
         # only rmtree in 1 epoch, and in one flag (mask).
         if pref_Path.exists() and epoch_idx == 0 and flag == 'mask':
@@ -70,18 +73,23 @@ class Preprocess(nn.Module):
         print('finish save %s' % flag)
 
     def shape_check(self, check: list):
+        """
+        shape_check check give value shape
 
+        Args:
+            check (list): checked value, in list.
+        """        
+
+        # first value in list is video, use this as reference.
         b, c, t, h, w = check[0].shape
 
-        # frame check
+        # frame check, we just need start from 1.
         for ck in check[0:]:
+            
             # for label shape
             if len(ck.shape) == 1: assert ck.shape[0] == b 
             # for other shape
             else: assert ck.shape[2] == t
-
-    def process_batch():
-        pass
 
     def forward(self, batch: torch.tensor, labels: list, batch_idx: int):
         """
@@ -89,6 +97,7 @@ class Preprocess(nn.Module):
 
         Args:
             batch (torch.tensor): batch imgs, (b, c, t, h, w)
+            labels (torch.tensor): batch labels, (b) # not use.
             batch_idx (int): epoch index.
 
         Returns:
@@ -97,10 +106,6 @@ class Preprocess(nn.Module):
                 
         b, c, t, h, w = batch.shape
 
-        # ? 这两种方法预测出来的图片，好像序列对不上（batch对不上）
-        # * slove, 因为不同epoch覆盖了，加一个batch_idx在最开始防止覆盖
-        # ? raft这个方法有问题，有些图片预测出来的样子很奇怪。感觉是transform的问题，但是确认了代码，没什么问题。
-        
         # process mask, pose
         video, labels, mask, pose = self.yolo_model(batch, labels)
 

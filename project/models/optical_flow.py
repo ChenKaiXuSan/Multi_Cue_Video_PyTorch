@@ -1,9 +1,30 @@
+'''
+File: optical_flow.py
+Project: models
+Created Date: 2023-08-01 10:17:50
+Author: chenkaixu
+-----
+Comment:
+optical flow file, use RAFT to predict the given img patch (first img, second img), get the predicted optical flow.
+
+Have a good code time!
+-----
+Last Modified: 2023-08-17 14:43:14
+Modified By: chenkaixu
+-----
+HISTORY:
+Date 	By 	Comments
+------------------------------------------------
+2023-08-17	KX.C	add comment for function.
+
+'''
+
 import numpy as np 
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torchvision.transforms.functional as F
 
-from torchvision.models.optical_flow import Raft_Large_Weights, raft_large, raft_small
+from torchvision.models.optical_flow import Raft_Large_Weights, raft_large
 
 class OpticalFlow(nn.Module):
 
@@ -16,7 +37,7 @@ class OpticalFlow(nn.Module):
         #define the network 
         self.optical_flow = raft_large(weights=self.weights, progress=False).cuda()
         
-    def get_Optical_flow(self, frame_batch):
+    def get_Optical_flow(self, frame_batch: torch.tensor):
         '''
         catch one by one batch optical flow, use RAFT method.
 
@@ -50,15 +71,15 @@ class OpticalFlow(nn.Module):
         pred_flows = torch.cat([pred_flows, pred_flows[-1, ...].unsqueeze(dim=0)], dim=0) # f, c, h, w
         return pred_flows # f, c, h, w
     
-    def process_batch(self, batch):
+    def process_batch(self, batch: torch.tensor):
         '''
         predict one batch optical flow.
 
         Args:
-            batch (nn.Tensor): batches of videos. (b, c, f, h, w)
+            batch (torch.tensor): batches of videos. (b, c, f, h, w)
 
         Returns:
-            nn.Tensor: stacked predict optical flow, (b, 2, f, h, w)
+            torch.tensor: stacked predict optical flow, (b, 2, f, h, w)
         '''        
         
         b, c, f, h, w = batch.shape
@@ -73,4 +94,12 @@ class OpticalFlow(nn.Module):
     
     def forward(self, batch):
 
-        return self.process_batch(batch)
+        b, c, t, h, w = batch
+
+        of = self.process_batch(batch)
+
+        # shape check 
+        assert of.shape[0] == b
+        assert of.shape[2] == t
+
+        return of
