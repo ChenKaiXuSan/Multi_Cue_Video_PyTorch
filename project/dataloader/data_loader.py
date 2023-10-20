@@ -9,7 +9,7 @@ A pytorch lightning data module based dataloader, for train/val/test dataset pre
 
 Have a good code time!
 -----
-Last Modified: 2023-08-15 16:00:33
+Last Modified: 2023-08-30 05:18:37
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -194,7 +194,7 @@ class WalkDataModule(LightningDataModule):
             batch_size=self._BATCH_SIZE,
             num_workers=self._NUM_WORKERS,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -209,7 +209,7 @@ class WalkDataModule(LightningDataModule):
             batch_size=self._BATCH_SIZE,
             num_workers=self._NUM_WORKERS,
             pin_memory=True,
-            drop_last=False,
+            drop_last=True,
         )
 
     def test_dataloader(self) -> DataLoader:

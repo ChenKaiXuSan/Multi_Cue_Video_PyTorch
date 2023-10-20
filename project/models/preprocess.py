@@ -9,7 +9,7 @@ The python file to process the RGB frames, clac the OF and mask, and return them
  
 Have a good code time!
 -----
-Last Modified: 2023-08-17 14:21:01
+Last Modified: 2023-08-30 04:48:05
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -21,7 +21,7 @@ Date 	By 	Comments
 
 '''
 
-import shutil
+import shutil, logging
 from pathlib import Path
 from typing import Any
 
@@ -69,8 +69,9 @@ class Preprocess(nn.Module):
                     inp = inp.to(torch.uint8)
                     
                 write_png(input=inp.cpu(), filename= str(pref_Path.joinpath(f'{flag}_{epoch_idx}_{b_idx}_{frame}.png')))
-                
-        print('finish save %s' % flag)
+        
+        logging.info('='*20)
+        logging.info('finish save %s' % flag)
 
     def shape_check(self, check: list):
         """

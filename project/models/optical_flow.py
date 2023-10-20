@@ -9,7 +9,7 @@ optical flow file, use RAFT to predict the given img patch (first img, second im
 
 Have a good code time!
 -----
-Last Modified: 2023-08-17 14:43:14
+Last Modified: 2023-08-29 11:13:34
 Modified By: chenkaixu
 -----
 HISTORY:
@@ -94,7 +94,7 @@ class OpticalFlow(nn.Module):
     
     def forward(self, batch):
 
-        b, c, t, h, w = batch
+        b, c, t, h, w = batch.shape
 
         of = self.process_batch(batch)
 
