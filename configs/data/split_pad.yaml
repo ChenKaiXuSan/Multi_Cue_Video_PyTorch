@@ -1,4 +1,0 @@
-# split and pad dataset, extract from the whole frame
-data_path: "/workspace/data/split_pad_dataset_512/"
-num_workers: 8
-img_size: 224
