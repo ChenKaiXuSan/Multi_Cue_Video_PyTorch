@@ -29,19 +29,14 @@ import torch
 from pathlib import Path
 from torchvision.io import read_video
 
-import sys, multiprocessing, logging
-
-sys.path.append("/workspace/skeleton/")
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+import multiprocessing
+import logging
 
 import hydra
 
-from project.utils import del_folder, make_folder
-from project.prepare_skeleton_dataset.yolov8 import MultiPreprocess
-from project.prepare_skeleton_dataset.preprocess import Preprocess
+from utils import del_folder, make_folder, merge_pkl
+from yolov8 import MultiPreprocess
+from preprocess import Preprocess
 
 RAW_CLASS = ["ASD", "DHS", "LCS", "HipOA"]
 CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
@@ -127,14 +122,14 @@ def process(parames, fold: str, disease: list):
             # * step2: load the video from vieo path
             # get the bbox
             vframes, audio, _ = read_video(
-                video_path, pts_unit="sec", output_format="TCHW"
+                video_path, pts_unit="sec", output_format="THWC"
             )
 
             # * step3: use preprocess to get information.
             # the format is: final_frames, bbox_none_index, label, optical_flow, bbox, mask, pose
             label = torch.tensor([map_CLASS[k]])  # convert the label to int
-            # TCHW > CTHW > BCTHW
-            m_vframes = vframes.permute(1, 0, 2, 3).unsqueeze(0)
+            # THWC to CTHW
+            m_vframes = vframes.permute(3, 0, 1, 2)
             (
                 frames,
                 bbox_none_index,
@@ -150,13 +145,18 @@ def process(parames, fold: str, disease: list):
             anno = dict()
 
             # * when use mmaction, we need convert the keypoint torch to numpy
-            anno["keypoint"] = keypoints.cpu().numpy()
-            anno["keypoint_score"] = keypoints_score.cpu().numpy()
-            anno["frame_dir"] = video_path
-            anno["img_shape"] = (vframes.shape[2], vframes.shape[3])
-            anno["original_shape"] = (vframes.shape[2], vframes.shape[3])
-            anno["total_frames"] = keypoints.shape[1]
+            anno["video_dir"] = video_path
+            anno["frames"] = vframes.cpu()
             anno["label"] = int(label)
+            anno["total_frames"] = vframes.shape[0]
+            anno["img_shape"] = (vframes.shape[1], vframes.shape[2])
+            
+            # multi modiality
+            anno["optical_flow"] = optical_flow.cpu()
+            anno["bbox"] = bbox.cpu()
+            anno["mask"] = mask.cpu()
+            anno["keypoint"] = keypoints.cpu()
+            anno["keypoint_score"] = keypoints_score.cpu()
 
             res[info["flag"]].append(anno)
 
@@ -171,37 +171,10 @@ def process(parames, fold: str, disease: list):
     logging.info(f"Save the {fold} {disease} to {SAVE_PATH}")
 
 
-def merge_pkl(config):
-
-    anns = {"annotations": []}
-    split_dict = {"train": [], "val": []}
-
-    SAVE_PATH = Path(config.gait_dataset.save_path)
-
-    for disease in SAVE_PATH.iterdir():
-
-        with open(disease, "rb") as file:
-            data = pickle.load(file)
-
-        train_anns = data["train"]
-        for one_sample in train_anns:
-            frame_dir = one_sample["frame_dir"]
-            split_dict["train"].append(frame_dir)
-            anns["annotations"].append(one_sample)
-
-        val_anns = data["val"]
-        for one_sample in val_anns:
-            frame_dir = one_sample["frame_dir"]
-            split_dict["val"].append(frame_dir)
-            anns["annotations"].append(one_sample)
-
-    anns["split"] = split_dict
-    with open(SAVE_PATH / "whole_annotations.pkl", "wb") as file:
-        pickle.dump(anns, file)
 
 
 @hydra.main(
-    config_path="/workspace/skeleton/configs/", config_name="prepare_skeleton_dataset"
+    config_path="../configs/", config_name="prepare_dataset"
 )
 def main(parames):
     """
@@ -212,23 +185,23 @@ def main(parames):
     """
 
     # ! only for test
-    # process(parames, "fold0", ["ASD"])
+    process(parames, "fold0", ["ASD"])
 
-    threads = []
-    for d in [["ASD"], ["LCS", "HipOA"]]:
+    # threads = []
+    # for d in [["ASD"], ["LCS", "HipOA"]]:
 
-        thread = multiprocessing.Process(target=process, args=(parames, "fold0", d))
-        threads.append(thread)
+    #     thread = multiprocessing.Process(target=process, args=(parames, "fold0", d))
+    #     threads.append(thread)
 
-    for t in threads:
-        t.start()
+    # for t in threads:
+    #     t.start()
 
-    for t in threads:
-        t.join()
+    # for t in threads:
+    #     t.join()
 
-    process(parames, "fold0", ["DHS"])
+    # process(parames, "fold0", ["DHS"])
 
-    merge_pkl(parames)
+    # merge_pkl(parames)
 
 
 if __name__ == "__main__":
