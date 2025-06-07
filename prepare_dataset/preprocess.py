@@ -94,18 +94,16 @@ class Preprocess:
     #         else:
     #             raise ValueError("shape not match")
 
-    def process_in_batches(self, model, frames, video_path, batch_size=8):
-        T = frames.shape[0]
-        results = []
-        for i in range(0, T, batch_size):
-            batch = frames[i:i+batch_size]
-            res = model(batch, video_path)
-            results.append(res)
-            torch.cuda.empty_cache()
-        return self.merge_results(results)
-        
     def __call__(self, vframes: torch.Tensor, video_path: Path):
         
+        # change the video_path to video name
+        # TODO: change the disease
+        if "LCS" or "HipOA" in video_path.parts[-2]:
+            video_path = Path(str(video_path).replace("ASD_not", "LCS_HipOA"))
+        elif "DHS" in video_path.parts[-2]:
+            video_path = Path(str(video_path).replace("ASD_not", "DHS"))
+            
+            
         T, H, W, C = vframes.shape
 
         # FIXME: OOM error

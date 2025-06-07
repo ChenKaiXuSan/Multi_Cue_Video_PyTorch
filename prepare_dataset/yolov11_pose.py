@@ -72,6 +72,8 @@ class YOLOv11Pose:
         self.save = configs.YOLO.save
         self.save_path = Path(configs.multi_dataset.save_path)
 
+        self.batch_size = configs.batch_size
+
     def get_YOLO_pose_result(self, vframes: torch.Tensor):
 
         vframes_numpy = vframes.numpy()
@@ -84,7 +86,7 @@ class YOLOv11Pose:
                 conf=self.conf,
                 iou=self.iou,
                 classes=0,
-                stream=True,
+                # stream=True,
                 verbose=self.verbose,
                 device=self.device,
             )
@@ -94,7 +96,7 @@ class YOLOv11Pose:
                 conf=self.conf,
                 iou=self.iou,
                 classes=0,
-                stream=True,
+                # stream=True,
                 verbose=self.verbose,
                 device=self.device,
             )
@@ -172,9 +174,18 @@ class YOLOv11Pose:
         bbox_dict = {}
         pose_dict = {}
         pose_dict_score = {}
+        results = []
 
+        # 分批处理
+        T = vframes.shape[0]
+        for start in range(0, T, self.batch_size):
+            end = min(start + self.batch_size, T)
+            batch = vframes[start:end]
+            batch_result = self.get_YOLO_pose_result(batch)
+            results.extend(batch_result)
+        
         # * process bbox
-        results = self.get_YOLO_pose_result(vframes)
+        # results = self.get_YOLO_pose_result(vframes)
 
         for idx, r in tqdm(
             enumerate(results), total=len(vframes), desc="YOLO Pose", leave=False

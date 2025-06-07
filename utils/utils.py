@@ -154,6 +154,13 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
         logger (logging): _description_
     """
 
+    # change the video_path to video name
+    # TODO: change the disease
+    if "LCS" or "HipOA" in one_video.parts[-2]:
+        one_video = Path(str(one_video).replace("ASD_not", "LCS_HipOA"))
+    elif "DHS" in one_video.parts[-2]:
+        one_video = Path(str(one_video).replace("ASD_not", "DHS"))
+    
     disease = one_video.parts[-2]
     video_name = one_video.stem
 

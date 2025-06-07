@@ -54,6 +54,8 @@ class YOLOv11Mask:
         self.save = configs.YOLO.save
         self.save_path = Path(configs.multi_dataset.save_path)
 
+        self.batch_size = configs.batch_size
+
     def get_YOLO_mask_result(self, vframes: torch.Tensor):
 
         vframes_numpy = vframes.numpy()
@@ -66,7 +68,7 @@ class YOLOv11Mask:
                 conf=self.conf,
                 iou=self.iou,
                 classes=0,
-                stream=True,
+                # stream=True,
                 verbose=self.verbose,
                 device=self.device,
             )
@@ -76,7 +78,7 @@ class YOLOv11Mask:
                 conf=self.conf,
                 iou=self.iou,
                 classes=0,
-                stream=True,
+                # stream=True,
                 verbose=self.verbose,
                 device=self.device,
             )
@@ -164,9 +166,18 @@ class YOLOv11Mask:
         none_index = []
         bbox_dict = {}
         mask_dict = {}
-
+        results = []
+        
+        # 分批处理
+        T = vframes.shape[0]
+        for start in range(0, T, self.batch_size):
+            end = min(start + self.batch_size, T)
+            batch = vframes[start:end]
+            batch_result = self.get_YOLO_mask_result(batch)
+            results.extend(batch_result)
+        
         # * process bbox
-        results = self.get_YOLO_mask_result(vframes)
+        # results = self.get_YOLO_mask_result(vframes)
 
         for idx, r in tqdm(
             enumerate(results), total=len(vframes), desc="YOLO Mask", leave=False

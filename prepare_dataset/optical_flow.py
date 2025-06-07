@@ -95,6 +95,8 @@ class OpticalFlow(nn.Module):
                     next_frame_batch,
                 )[-1]
                 pred_flows.append(temp_pred_flows.cpu())
+        
+        pred_flows.append(temp_pred_flows[-1:, ...].cpu())  # append the last flow to match the frame number
 
         # empty cache
         torch.cuda.empty_cache()
