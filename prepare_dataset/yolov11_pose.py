@@ -70,7 +70,7 @@ class YOLOv11Pose:
         self.img_size = configs.YOLO.img_size
 
         self.save = configs.YOLO.save
-        self.save_path = Path(configs.extract_dataset.save_path)
+        self.save_path = Path(configs.multi_dataset.save_path)
 
     def get_YOLO_pose_result(self, vframes: torch.Tensor):
 
@@ -241,8 +241,8 @@ class YOLOv11Pose:
                 f"the {video_path} has {len(none_index)} frames without pose, please check the results."
             )
             # process none index, where from bbox_dict to instead the None value with next frame tensor (or froward frame tensor).
-            pose = process_none(batch_Dict=pose_dict, none_index=none_index)
-            pose_score = process_none(batch_Dict=pose_dict_score, none_index=none_index)
+            pose_dict = process_none(batch_Dict=pose_dict, none_index=none_index)
+            pose_dict_score = process_none(batch_Dict=pose_dict_score, none_index=none_index)
             # bbox_dict = process_none(batch_Dict=bbox_dict, none_index=none_index)
 
         # convert dict to tensor

@@ -51,7 +51,7 @@ class YOLOv11Bbox:
         self.img_size = configs.YOLO.img_size
 
         self.save = configs.YOLO.save
-        self.save_path = Path(configs.extract_dataset.save_path)
+        self.save_path = Path(configs.multi_dataset.save_path)
 
     def get_YOLO_bbox_result(self, vframes: torch.Tensor, video_path: Path = None):
 

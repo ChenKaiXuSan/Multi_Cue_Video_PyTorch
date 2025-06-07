@@ -19,6 +19,8 @@ HISTORY:
 Date      	By	Comments
 ----------	---	---------------------------------------------------------
 '''
+from typing import Dict, List
+import copy
 
 import os
 import shutil
@@ -152,10 +154,10 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
         logger (logging): _description_
     """
 
-    person = one_video.parts[-2]
+    disease = one_video.parts[-2]
     video_name = one_video.stem
 
-    save_path_with_name = save_path / "pt" / person / (video_name + ".pt")
+    save_path_with_name = save_path / "pt" / disease / (video_name + ".pt")
 
     make_folder(save_path_with_name.parent)
 
@@ -164,30 +166,76 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
     logger.info(f"Save the {video_name} to {save_path_with_name}")
 
 
-def process_none(batch_Dict: dict[torch.Tensor], none_index: list):
+# def process_none(batch_Dict: dict[torch.Tensor], none_index: list):
+#     """
+#     process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
+
+#     Args:
+#         batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
+#         none_index (list): none index list map to batch_Dict, here not use this.
+
+#     Returns:
+#         list: list include the replace value for None value.
+#     """
+
+#     boundary = len(batch_Dict) - 1
+#     filter_batch = batch_Dict.copy()
+
+#     for i in none_index:
+
+#         # * if the index is None, we need to replace it with next frame.
+#         if batch_Dict[i] is None:
+            
+#             next_idx = i 
+#             while True:
+#                 # * if the next index is None, we need to find the next not None index.
+#                 if next_idx < boundary and batch_Dict[next_idx] is None:
+#                     next_idx += 1
+#                 else:
+#                     break
+
+#             if next_idx < boundary:
+#                 filter_batch[i] = batch_Dict[next_idx]
+#             else:
+#                 filter_batch[i] = batch_Dict[boundary-1]
+
+#     return filter_batch
+
+
+def process_none(batch_Dict: Dict[int, torch.Tensor], none_index: List[int]) -> Dict[int, torch.Tensor]:
     """
-    process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
+    Replace None entries in the batch dictionary with the next available valid tensor.
+    If no valid tensor is found ahead, use the last valid tensor before the boundary.
 
     Args:
-        batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
-        none_index (list): none index list map to batch_Dict, here not use this.
+        batch_dict (Dict[int, torch.Tensor]): Dictionary of index -> tensor, some entries are None.
+        none_index (List[int]): List of indices in batch_dict that are None.
 
     Returns:
-        list: list include the replace value for None value.
+        Dict[int, torch.Tensor]: A new dictionary with None values replaced.
     """
+    filtered_batch = copy.deepcopy(batch_Dict)
+    max_index = max(batch_Dict.keys())
 
-    boundary = len(batch_Dict) - 1
-    filter_batch = batch_Dict.copy()
+    for idx in none_index:
+        if filtered_batch.get(idx) is not None:
+            continue
 
-    for i in none_index:
+        # Search forward
+        next_idx = idx + 1
+        while next_idx <= max_index and filtered_batch.get(next_idx) is None:
+            next_idx += 1
 
-        # * if the index is None, we need to replace it with next frame.
-        if batch_Dict[i] is None:
-            next_idx = i + 1
-
-            if next_idx < boundary:
-                filter_batch[i] = batch_Dict[next_idx]
+        if next_idx <= max_index and filtered_batch.get(next_idx) is not None:
+            filtered_batch[idx] = filtered_batch[next_idx]
+        else:
+            # If no valid frame ahead, try to use the last one
+            prev_idx = idx - 1
+            while prev_idx >= 0 and filtered_batch.get(prev_idx) is None:
+                prev_idx -= 1
+            if prev_idx >= 0:
+                filtered_batch[idx] = filtered_batch[prev_idx]
             else:
-                filter_batch[i] = batch_Dict[boundary]
+                raise ValueError(f"Cannot find valid replacement for index {idx}")
 
-    return filter_batch
+    return filtered_batch

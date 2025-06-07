@@ -51,7 +51,7 @@ class OpticalFlow(nn.Module):
         self.model = raft_large(weights=self.weights, progress=False).to(self.device)
 
         self.save = param.optical_flow.save
-        self.save_path = Path(param.extract_dataset.save_path)
+        self.save_path = Path(param.multi_dataset.save_path)
 
     def get_Optical_flow(self, frame_batch):
         """
@@ -79,11 +79,11 @@ class OpticalFlow(nn.Module):
         pred_flows = []
 
         interval = (
-            2  # the interval for the OF model predict, because the model is too large.
+            20  # the interval for the OF model predict, because the model is too large.
         )
 
         with torch.no_grad():
-            for i in tqdm(range(0, f, interval), desc="Predict optical flow"):
+            for i in tqdm(range(0, f-1, interval), desc="Predict optical flow"):
 
                 # transforms
                 current_frame_batch, next_frame_batch = self.transforms(

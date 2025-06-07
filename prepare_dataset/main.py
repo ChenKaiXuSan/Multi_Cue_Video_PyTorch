@@ -35,65 +35,98 @@ import logging
 import hydra
 
 from prepare_dataset.preprocess import Preprocess
+from utils.utils import save_to_pt
 
 RAW_CLASS = ["ASD", "DHS", "LCS", "HipOA"]
 CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
 map_CLASS = {"ASD": 0, "DHS": 1, "LCS_HipOA": 2, "Normal": 3}  # map the class to int
 
-
-class LoadOneDisese:
-    def __init__(self, data_path, fold, disease) -> None:
-
-        self.DATA_PATH = data_path
+class LoadOneDisease:
+    def __init__(self, data_path: str | Path, fold: str, diseases: list[str]) -> None:
+        self.DATA_PATH = Path(data_path)
         self.fold = fold
-        self.disease = disease
-        # this is the return dict
+        self.diseases = diseases
         self.path_dict = {key: [] for key in CLASS}
 
-    def process_class(self, one_class: Path, flag: str):
-        for d in self.disease:
-            if d in ["DHS", "LCS", "HipOA"]:
-                for one_video in sorted(one_class.iterdir()):
-                    if d in one_video.name.split("_"):
-                        info = {
-                            "flag": flag,
-                            "disease": d,
-                        }
-
-                        if d in CLASS:
-                            self.path_dict[d].append((str(one_video), info))
-                        else:
-                            self.path_dict[CLASS[2]].append((str(one_video), info))
-                    else:
-                        continue
-
-            else:
-                for one_video in sorted(one_class.iterdir()):
-                    if d in one_video.name.split("_"):
-                        info = {"flag": flag, "disease": d}
-
-                        self.path_dict[d].append((str(one_video), info))
+    def process_class(self, dir_path: Path, flag: str):
+        for video_file in sorted(dir_path.iterdir()):
+            for disease in self.diseases:
+                if disease in video_file.name.split("_"):
+                    info = {"flag": flag, "disease": disease}
+                    key = (
+                        disease if disease in CLASS else CLASS[2]  # default to LCS_HipOA
+                    )
+                    self.path_dict[key].append((video_file, info))
+                    break  # avoid double append if multiple diseases match
 
     def __call__(self) -> dict:
-        one_fold_path = Path(self.DATA_PATH, self.fold)
+        fold_path = self.DATA_PATH / self.fold
 
         for flag in ["train", "val"]:
-            one_flag_path = Path(one_fold_path, flag)
-
-            for one_class in self.disease:
-                if one_class == "DHS" or one_class == "LCS" or one_class == "HipOA":
-                    new_path = one_flag_path / "ASD_not"
+            flag_path = fold_path / flag
+            for disease in self.diseases:
+                subdir = "ASD_not" if disease in ["DHS", "LCS", "HipOA"] else disease
+                target_dir = flag_path / subdir
+                if target_dir.exists():
+                    self.process_class(target_dir, flag)
                 else:
-                    new_path = one_flag_path / one_class
-
-                self.process_class(new_path, flag)
+                    logging.warning(f"Directory not found: {target_dir}")
 
         return self.path_dict
 
+# class LoadOneDisease:
+#     def __init__(self, data_path, fold, disease) -> None:
+
+#         self.DATA_PATH = data_path
+#         self.fold = fold
+#         self.disease = disease
+#         # this is the return dict
+#         self.path_dict = {key: [] for key in CLASS}
+
+#     def process_class(self, one_class: Path, flag: str):
+#         for d in self.disease:
+#             if d in ["DHS", "LCS", "HipOA"]:
+#                 for one_video in sorted(one_class.iterdir()):
+#                     if d in one_video.name.split("_"):
+#                         info = {
+#                             "flag": flag,
+#                             "disease": d,
+#                         }
+
+#                         if d in CLASS:
+#                             self.path_dict[d].append((Path(one_video), info))
+#                         else:
+#                             self.path_dict[CLASS[2]].append((Path(one_video), info))
+#                     else:
+#                         continue
+
+#             else:
+#                 for one_video in sorted(one_class.iterdir()):
+#                     if d in one_video.name.split("_"):
+#                         info = {"flag": flag, "disease": d}
+
+#                         self.path_dict[d].append((Path(one_video), info))
+
+#     def __call__(self) -> dict:
+#         one_fold_path = Path(self.DATA_PATH, self.fold)
+
+#         for flag in ["train", "val"]:
+#             one_flag_path = Path(one_fold_path, flag)
+
+#             for one_class in self.disease:
+#                 if one_class == "DHS" or one_class == "LCS" or one_class == "HipOA":
+#                     new_path = one_flag_path / "ASD_not"
+#                 else:
+#                     new_path = one_flag_path / one_class
+
+#                 self.process_class(new_path, flag)
+
+#         return self.path_dict
+
 
 def process(parames, fold: str, disease: list):
-    DATA_PATH = parames.gait_dataset.data_path
-    SAVE_PATH = Path(parames.gait_dataset.save_path)
+    DATA_PATH = Path(parames.multi_dataset.data_path)
+    SAVE_PATH = Path(parames.multi_dataset.save_path)
 
     res = {"train": [], "val": []}
 
@@ -106,7 +139,7 @@ def process(parames, fold: str, disease: list):
     preprocess = Preprocess(parames)
 
     # * step1: load the video path, with the sorted order
-    load_one_disease = LoadOneDisese(DATA_PATH, fold, disease)
+    load_one_disease = LoadOneDisease(DATA_PATH, fold, disease)
     one_fold_video_path_dict = (
         load_one_disease()
     )  # {disease: (video_path, info{flag, disease}})}
@@ -127,27 +160,25 @@ def process(parames, fold: str, disease: list):
             # the format is: final_frames, bbox_none_index, label, optical_flow, bbox, mask, pose
             label = torch.tensor([map_CLASS[k]])  # convert the label to int
             # THWC to CTHW
-            m_vframes = vframes.permute(3, 0, 1, 2)
             (
-                frames,
                 bbox_none_index,
-                label,
                 optical_flow,
                 bbox,
                 mask,
                 keypoints,
                 keypoints_score,
-            ) = preprocess(m_vframes, label, 0)
+            ) = preprocess(vframes, video_path)
 
             # * step4: save the video frames keypoint
             anno = dict()
 
             # * when use mmaction, we need convert the keypoint torch to numpy
             anno["video_dir"] = video_path
-            anno["frames"] = vframes.cpu()
+            anno["frames"] = vframes.permute(0, 3, 1, 2).cpu() # (T, C, H, W)
             anno["label"] = int(label)
             anno["total_frames"] = vframes.shape[0]
             anno["img_shape"] = (vframes.shape[1], vframes.shape[2])
+            anno["bbox_none_index"] = bbox_none_index
             
             # multi modiality
             anno["optical_flow"] = optical_flow.cpu()
@@ -157,16 +188,11 @@ def process(parames, fold: str, disease: list):
             anno["keypoint_score"] = keypoints_score.cpu()
 
             res[info["flag"]].append(anno)
-
             # break;
+            # save one disease to pkl file.
+            save_to_pt(video_path, SAVE_PATH, anno)
 
-    # save one disease to pkl file.
-    SAVE_PATH.mkdir(parents=True, exist_ok=True)
-
-    with open(SAVE_PATH / f'{"_".join(disease)}.pkl', "wb") as file:
-        pickle.dump(res, file)
-
-    logging.info(f"Save the {fold} {disease} to {SAVE_PATH}")
+            logger.info(f"Save the {fold} {disease} to {SAVE_PATH}")
 
 
 
@@ -183,9 +209,10 @@ def main(parames):
     """
 
     # ! only for test
-    process(parames, "fold0", ["ASD"])
+    process(parames, "fold0", ["LCS", "HipOA"])
 
     # threads = []
+    # parames.device = "0"
     # for d in [["ASD"], ["LCS", "HipOA"]]:
 
     #     thread = multiprocessing.Process(target=process, args=(parames, "fold0", d))
@@ -197,6 +224,7 @@ def main(parames):
     # for t in threads:
     #     t.join()
 
+    # parames.device = "1"
     # process(parames, "fold0", ["DHS"])
 
     # merge_pkl(parames)

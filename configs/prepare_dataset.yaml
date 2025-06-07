@@ -28,7 +28,7 @@ extract_dataset:
   save_path: "/workspace/data/segmentation_dataset_512" # this is extracted video path.
 
 # step2: from extracted video to define the gait cycle.
-gait_dataset:
+multi_dataset:
   data_path: "/workspace/data/segmentation_dataset_512" # meta four view dataset path, with human annotation.
   save_path: "/workspace/data/multi_cue_dataset" # convert the four view dataset into a format of the annotation file.
 
