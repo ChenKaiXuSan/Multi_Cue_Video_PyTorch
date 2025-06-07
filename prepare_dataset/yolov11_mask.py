@@ -49,7 +49,7 @@ class YOLOv11Mask:
         self.verbose = configs.YOLO.verbose
         self.img_size = configs.YOLO.img_size
 
-        self.device = configs.device
+        self.device = f"cuda:{configs.device}" 
 
         self.save = configs.YOLO.save
         self.save_path = Path(configs.multi_dataset.save_path)

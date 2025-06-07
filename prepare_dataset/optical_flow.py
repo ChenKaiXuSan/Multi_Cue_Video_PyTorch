@@ -44,7 +44,8 @@ class OpticalFlow(nn.Module):
         self.weights = Raft_Large_Weights.DEFAULT
         self.transforms = self.weights.transforms()
 
-        self.device = param.device
+        self.device = f"cuda:{param.device}"
+
         # define the network
         os.environ["TORCH_HOME"] = str(param.optical_flow.of_ckpt)
         

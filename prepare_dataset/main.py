@@ -24,7 +24,6 @@ Date      	By	Comments
 
 from __future__ import annotations
 
-import pickle
 import torch
 from pathlib import Path
 from torchvision.io import read_video
@@ -41,6 +40,7 @@ RAW_CLASS = ["ASD", "DHS", "LCS", "HipOA"]
 CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
 map_CLASS = {"ASD": 0, "DHS": 1, "LCS_HipOA": 2, "Normal": 3}  # map the class to int
 
+logger = logging.getLogger(__name__)
 class LoadOneDisease:
     def __init__(self, data_path: str | Path, fold: str, diseases: list[str]) -> None:
         self.DATA_PATH = Path(data_path)
@@ -209,25 +209,30 @@ def main(parames):
     """
 
     # ! only for test
-    process(parames, "fold0", ["LCS", "HipOA"])
+    # process(parames, "fold0", ["LCS", "HipOA"])
 
-    # threads = []
-    # parames.device = "0"
-    # for d in [["ASD"], ["LCS", "HipOA"]]:
+    threads = []
 
-    #     thread = multiprocessing.Process(target=process, args=(parames, "fold0", d))
-    #     threads.append(thread)
+    task_config = [
+        ("0", "fold0", ["ASD"]),
+        ("0", "fold0", ["DHS"]),
+        ("1", "fold0", ["LCS", "HipOA"]),
+    ]
 
-    # for t in threads:
-    #     t.start()
+    for device, fold, disease in task_config:
+        parames.device = device
+        thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
+        threads.append(thread)
 
-    # for t in threads:
-    #     t.join()
+    # start all threads
+    for thread in threads:
+        thread.start()
+    # wait for all threads to finish
+    for thread in threads:
+        thread.join()
+    
 
-    # parames.device = "1"
-    # process(parames, "fold0", ["DHS"])
-
-    # merge_pkl(parames)
+    logger.info("All processes finished.")
 
 
 if __name__ == "__main__":
