@@ -9,10 +9,16 @@ YOLO:
   pose_ckpt: "/workspace/code/ckpt/yolov8x-pose.pt"
   seg_ckpt: "/workspace/code/ckpt/yolov8x-seg.pt"
   bbox_ckpt: "/workspace/code/ckpt/yolov8x.pt"
-  conf: 0.8
+  conf: 0.5
   iou: 0.5
   verbose: False
-  device: 0
+  img_size: 640
+  tracking: true
+  save: true
+
+optical_flow:
+  of_ckpt: "/workspace/code/ckpt/"
+  save: true
 
 # Path
 # step1: from raw video to extract video.
@@ -27,4 +33,5 @@ gait_dataset:
   save_path: "/workspace/data/multi_cue_dataset" # convert the four view dataset into a format of the annotation file.
 
 log_path: "${gait_dataset.save_path}/logs/"
-task: ["pose", "mask", "bbox", "depth", "optical_flow"]
+task: ["pose", "mask", "bbox", "optical_flow"]
+device: 0

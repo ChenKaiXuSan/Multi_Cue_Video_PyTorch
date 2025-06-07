@@ -1,26 +1,27 @@
-"""
-File: utils.py
-Project: utils
-Created Date: 2023-09-03 13:02:25
-Author: chenkaixu
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+'''
+File: /workspace/code/utils/utils copy.py
+Project: /workspace/code/utils
+Created Date: Saturday June 7th 2025
+Author: Kaixu Chen
 -----
 Comment:
 
-Have a good code time!
+Have a good code time :)
 -----
-Last Modified: 2023-09-03 13:03:05
-Modified By: chenkaixu
+Last Modified: Saturday June 7th 2025 4:25:18 pm
+Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
+-----
+Copyright (c) 2025 The University of Tsukuba
 -----
 HISTORY:
-Date 	By 	Comments
-------------------------------------------------
-
-"""
+Date      	By	Comments
+----------	---	---------------------------------------------------------
+'''
 
 import os
 import shutil
-import json
-import pickle
 
 import cv2
 from tqdm import tqdm
@@ -110,10 +111,15 @@ def make_folder(path, *args):
 
 
 def merge_frame_to_video(
-    save_path: Path, person: str, video_name: str, flag: str
+    save_path: Path, person: str, video_name: str, flag: str, filter: bool = False
 ) -> None:
-    _save_path = save_path / "vis" / flag / person / video_name
-    _out_path = save_path / "vis_video" / flag / person
+
+    if filter:
+        _save_path = save_path / "vis" / "filter_img" / flag / person / video_name
+        _out_path = save_path / "vis" / "filter_video" / flag / person
+    else:
+        _save_path = save_path / "vis" / "img" / flag / person / video_name
+        _out_path = save_path / "vis" / "video" / flag / person
 
     frames = sorted(list(_save_path.iterdir()), key=lambda x: int(x.stem.split("_")[0]))
 
@@ -128,7 +134,7 @@ def merge_frame_to_video(
         str(_out_path / video_name) + ".mp4", fourcc, 30.0, (width, height)
     )
 
-    for f in tqdm(frames, desc=f"Saveing {video_name}", total=len(frames)):
+    for f in tqdm(frames, desc=f"Save {flag}-{video_name}", total=len(frames)):
         img = cv2.imread(str(f))
         out.write(img)
 
@@ -137,7 +143,7 @@ def merge_frame_to_video(
     logger.info(f"Video saved to {_out_path / video_name}.mp4")
 
 
-def save_to_json(sample_info: dict, save_path: Path, person: str) -> None:
+def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) -> None:
     """save the sample info to json file.
 
     Args:
@@ -146,66 +152,42 @@ def save_to_json(sample_info: dict, save_path: Path, person: str) -> None:
         logger (logging): _description_
     """
 
-    for k, v in sample_info.items():
-        save_path_with_name = save_path / "json" / person / (k.split(".")[0] + ".json")
+    person = one_video.parts[-2]
+    video_name = one_video.stem
 
-        make_folder(save_path_with_name.parent)
+    save_path_with_name = save_path / "pt" / person / (video_name + ".pt")
 
-        # convert Path to str.
-        v["bbox"] = v["bbox"].tolist()  # serialized as list
-        v["mask"] = v["mask"].tolist()
-        v["keypoint"]["keypoint"] = v["keypoint"]["keypoint"].tolist()
-        v["keypoint"]["keypoint_score"] = v["keypoint"]["keypoint_score"].tolist()
-        v["depth"] = v["depth"].tolist()
+    make_folder(save_path_with_name.parent)
 
-        with open(save_path_with_name, "w") as f:
-            json.dump(v, f, indent=4)
+    torch.save(pt_info, save_path_with_name)
 
-        logger.info(f"Save the {v['video_name']} to {save_path_with_name}")
+    logger.info(f"Save the {video_name} to {save_path_with_name}")
 
 
-def save_to_pt(sample_info: dict, save_path: Path, person: str) -> None:
-    """save the sample info to json file.
+def process_none(batch_Dict: dict[torch.Tensor], none_index: list):
+    """
+    process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
 
     Args:
-        sample_info (dict): _description_
-        save_path (Path): _description_
-        logger (logging): _description_
+        batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
+        none_index (list): none index list map to batch_Dict, here not use this.
+
+    Returns:
+        list: list include the replace value for None value.
     """
 
-    for k, v in sample_info.items():
-        save_path_with_name = save_path / "pt" / person / (k.split(".")[0] + ".pt")
+    boundary = len(batch_Dict) - 1
+    filter_batch = batch_Dict.copy()
 
-        make_folder(save_path_with_name.parent)
+    for i in none_index:
 
-        torch.save(v, save_path_with_name)
+        # * if the index is None, we need to replace it with next frame.
+        if batch_Dict[i] is None:
+            next_idx = i + 1
 
-        logger.info(f"Save the {v['video_name']} to {save_path_with_name}")
+            if next_idx < boundary:
+                filter_batch[i] = batch_Dict[next_idx]
+            else:
+                filter_batch[i] = batch_Dict[boundary]
 
-def merge_pkl(config):
-
-    anns = {"annotations": []}
-    split_dict = {"train": [], "val": []}
-
-    SAVE_PATH = Path(config.gait_dataset.save_path)
-
-    for disease in SAVE_PATH.iterdir():
-
-        with open(disease, "rb") as file:
-            data = pickle.load(file)
-
-        train_anns = data["train"]
-        for one_sample in train_anns:
-            frame_dir = one_sample["frame_dir"]
-            split_dict["train"].append(frame_dir)
-            anns["annotations"].append(one_sample)
-
-        val_anns = data["val"]
-        for one_sample in val_anns:
-            frame_dir = one_sample["frame_dir"]
-            split_dict["val"].append(frame_dir)
-            anns["annotations"].append(one_sample)
-
-    anns["split"] = split_dict
-    with open(SAVE_PATH / "whole_annotations.pkl", "wb") as file:
-        pickle.dump(anns, file)
+    return filter_batch

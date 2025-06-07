@@ -1,0 +1,16 @@
+{
+  "configurations": [
+    {
+      "name": "prepare_dataset",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "prepare_dataset.main",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [
+        // "model.fuse_method=add"
+      ]
+    },
+  ]
+}

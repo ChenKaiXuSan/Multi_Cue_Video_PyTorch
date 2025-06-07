@@ -1,143 +1,146 @@
-'''
-File: preprocess.py
-Project: models
-Created Date: 2023-09-03 13:44:00
-Author: chenkaixu
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+"""
+File: /workspace/code/Skiing_Analysis_PyTorch/prepare_dataset/preprocess.py
+Project: /workspace/code/Skiing_Analysis_PyTorch/prepare_dataset
+Created Date: Wednesday April 23rd 2025
+Author: Kaixu Chen
 -----
 Comment:
-preprocess script include the pose estimation, optical flow, and mask.
-This is used for define the one gait cycle from video.
- 
-Have a good code time!
+
+Have a good code time :)
 -----
-Last Modified: Thursday May 22nd 2025 3:11:46 pm
+Last Modified: Wednesday April 23rd 2025 12:56:44 pm
 Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
 -----
+Copyright (c) 2025 The University of Tsukuba
+-----
 HISTORY:
-Date 	By 	Comments
-------------------------------------------------
+Date      	By	Comments
+----------	---	---------------------------------------------------------
+"""
 
-'''
-
-
-import shutil, logging
+import logging
 from pathlib import Path
 
-import torch  
-import torch.nn as nn 
-from torchvision.io import write_png
-from torchvision.utils import flow_to_image
+import torch
 
-from yolov8 import MultiPreprocess
+from prepare_dataset.optical_flow import OpticalFlow
+from prepare_dataset.yolov11_bbox import YOLOv11Bbox
+from prepare_dataset.yolov11_pose import YOLOv11Pose
+from prepare_dataset.yolov11_mask import YOLOv11Mask
 
-from optical_flow import OpticalFlow
+logger = logging.getLogger(__name__)
 
-    
 
-class Preprocess(nn.Module):
-
+class Preprocess:
     def __init__(self, config) -> None:
         super(Preprocess, self).__init__()
 
-        self.yolo_model = MultiPreprocess(config.YOLO)
+        self.config = config
+        self.task = config.task
+        logger.info(f"Preprocess task: {self.task}")
 
-        # ! notice: the OF method have err, the reason do not know.
-        if config.method == 'OF':
-            self.of_model = OpticalFlow(config)
-        else:
-            self.of_model = None
+        # 模块初始化
+        self.yolo_model_bbox = self._init_task("bbox", YOLOv11Bbox)
+        self.yolo_model_pose = self._init_task("pose", YOLOv11Pose)
+        self.yolo_model_mask = self._init_task("mask", YOLOv11Mask)
+        self.of_model = self._init_task("optical_flow", OpticalFlow)
+
+
+    def _init_task(self, task_name: str, cls):
+        return cls(self.config) if task_name in self.task else None
     
-    def save_img(self, batch:torch.tensor, flag:str, epoch_idx:int):
+    def _empty_tensor(self, shape: tuple, dtype=torch.float32):
         """
-        save_img save batch to png, for analysis.
+        Create an empty tensor with the given shape and dtype.
+        """
+        return torch.empty(shape, dtype=dtype)
+    
+    # def shape_check(self, check: list):
+    #     """
+    #     shape_check check the given value shape, and assert the shape.
 
-        Args:
-            batch (torch.tensor): the batch of imgs (b, c, t, h, w)
-            flag (str): flag for filename, ['optical_flow', 'mask']
-            batch_idx (int): epoch index.
-        """        
+    #     check list include:
+    #     # batch, (b, c, t, h, w)
+    #     # bbox, (b, t, 4) (cxcywh)
+    #     # mask, (b, 1, t, h, w)
+    #     # keypoint, (b, t, 17, 2)
+    #     # optical_flow, (b, 2, t, h, w)
+
+    #     Args:
+    #         check (list): checked value, in list.
+    #     """
+
+    #     # first value in list is video, use this as reference.
+    #     t, h, w, c = check[0].shape
+
+    #     # frame check, we just need start from 1.
+    #     for ck in check[0:]:
+    #         if ck is None:
+    #             continue
+    #         # for label shape
+    #         if len(ck.shape) == 1:
+    #             assert ck.shape[0] == b
+    #         # for bbox shape
+    #         elif len(ck.shape) == 3:
+    #             assert ck.shape[0] == b and ck.shape[1] == t
+    #         # for mask shape and optical flow shape
+    #         elif len(ck.shape) == 5:
+    #             assert ck.shape[0] == b and (ck.shape[2] == t or ck.shape[2] == t - 1)
+    #         # for keypoint shape
+    #         elif len(ck.shape) == 4:
+    #             assert ck.shape[0] == b and ck.shape[1] == t and ck.shape[2] == 17
+    #         else:
+    #             raise ValueError("shape not match")
+
+    def __call__(self, vframes: torch.Tensor, video_path: Path):
         
-        pref_Path = Path('/workspace/skeleton/logs/img_test')
-        # only rmtree in 1 epoch, and in one flag (mask).
-        if pref_Path.exists() and epoch_idx == 0 and flag == 'mask':
-            shutil.rmtree(pref_Path)
-            pref_Path.mkdir(parents=True)
+        T, H, W, C = vframes.shape
+
+        # * process optical flow
+        if self.of_model:
+            optical_flow = self.of_model(vframes, video_path)
+        else:
+            optical_flow = self._empty_tensor(
+                (0, 2, H, W), dtype=torch.float32
+            )
+
+        # * process bbox
+        if self.yolo_model_bbox:
+            # use MultiPreprocess to process bbox, mask, pose
+            bbox, bbox_none_index, bbox_results = self.yolo_model_bbox(
+                vframes, video_path
+            )
+        else:
+            bbox_none_index = []
+            bbox = self._empty_tensor(
+                (0, 4), dtype=torch.float32
+            )
+
+        # * process pose
+        if self.yolo_model_pose:
+            pose, pose_score, pose_none_index, pose_results = self.yolo_model_pose(
+                vframes, video_path
+            )
+        else:
+            pose = self._empty_tensor(
+                (0, 17, 3), dtype=torch.float32
+            )
+            pose_score = self._empty_tensor(
+                (0, 17), dtype=torch.float32
+            )
             
-        b, c, t, h, w = batch.shape
+        # * process mask
+        if self.yolo_model_mask:
+            mask, mask_none_index, mask_results = self.yolo_model_mask(
+                vframes, video_path
+            )
+        else:
+            mask = self._empty_tensor(
+                (0, 1, H, W), dtype=torch.float32
+            )
 
-        for b_idx in range(b):
-            for frame in range(t):
-                
-                if flag == 'optical_flow':
-                    inp = flow_to_image(batch[b_idx, :, frame, ...])
-                else:
-                    inp = batch[b_idx, :, frame, ...] * 255
-                    inp = inp.to(torch.uint8)
-                    
-                write_png(input=inp.cpu(), filename= str(pref_Path.joinpath(f'{flag}_{epoch_idx}_{b_idx}_{frame}.png')))
-        
-        logging.info('='*20)
-        logging.info('finish save %s' % flag)
+        # * shape check
 
-    def shape_check(self, check: list):
-        """
-        shape_check check the given value shape, and assert the shape.
-
-        check list include:
-        # batch, (b, c, t, h, w)
-        # label, (b)
-        # bbox, (b, t, 4) (cxcywh)
-        # mask, (b, 1, t, h, w)
-        # keypoint, (b, t, 17, 2)
-        # optical_flow, (b, 2, t, h, w)
-
-        Args:
-            check (list): checked value, in list.
-        """        
-
-        # first value in list is video, use this as reference.
-        b, c, t, h, w = check[0].shape
-
-        # frame check, we just need start from 1.
-        for ck in check[0:]:
-            
-            if ck is None: continue
-            # for label shape
-            if len(ck.shape) == 1: assert ck.shape[0] == b 
-            # for bbox shape
-            elif len(ck.shape) == 3: assert ck.shape[0] == b and ck.shape[1] == t
-            # for mask shape and optical flow shape
-            elif len(ck.shape) == 5: assert ck.shape[0] == b and (ck.shape[2] == t or ck.shape[2] == t-1)
-            # for keypoint shape
-            elif len(ck.shape) == 4: assert ck.shape[0] == b and ck.shape[1] == t and ck.shape[2] == 17
-            else: raise ValueError('shape not match')
-
-    def forward(self, batch: torch.tensor, labels: list, batch_idx: int):
-        """
-        forward preprocess method for one batch.
-
-        Args:
-            batch (torch.tensor): batch imgs, (b, c, t, h, w)
-            labels (torch.tensor): batch labels, (b) # not use.
-            batch_idx (int): epoch index.
-
-        Returns:
-            list: list for different moddailty, return video, bbox_non_index, labels, bbox, mask, pose
-        """
-                
-        b, c, t, h, w = batch.shape
-
-        # process mask, pose
-        video, bbox_none_index, labels, bbox, mask, pose, pose_score = self.yolo_model(batch, labels)
-
-        # FIXME: OF method have some problem, the reason do not know.
-        # when not use OF, return None value.
-        if self.of_model is not None:
-            optical_flow = self.of_model.process_batch(batch)
-        else: 
-            optical_flow = None
-
-        # shape check
-        self.shape_check([video, labels, mask, bbox, pose, optical_flow])
-        
-        return video, bbox_none_index, labels, optical_flow, bbox, mask, pose, pose_score
+        return bbox_none_index, optical_flow, bbox, mask, pose, pose_score
