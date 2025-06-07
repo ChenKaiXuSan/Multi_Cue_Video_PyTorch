@@ -98,9 +98,9 @@ class Preprocess:
         
         # change the video_path to video name
         # TODO: change the disease
-        if "LCS" or "HipOA" in video_path.parts[-2]:
+        if "LCS" in video_path.stem or "HipOA" in video_path.stem:
             video_path = Path(str(video_path).replace("ASD_not", "LCS_HipOA"))
-        elif "DHS" in video_path.parts[-2]:
+        elif "DHS" in video_path.stem:
             video_path = Path(str(video_path).replace("ASD_not", "DHS"))
             
             

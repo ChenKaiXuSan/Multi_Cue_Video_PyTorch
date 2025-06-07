@@ -34,7 +34,7 @@ import logging
 import hydra
 
 from prepare_dataset.preprocess import Preprocess
-from utils.utils import save_to_pt
+from utils.utils import save_to_pt, timing
 
 RAW_CLASS = ["ASD", "DHS", "LCS", "HipOA"]
 CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
@@ -123,7 +123,7 @@ class LoadOneDisease:
 
 #         return self.path_dict
 
-
+@timing(logger=logger)
 def process(parames, fold: str, disease: list):
     DATA_PATH = Path(parames.multi_dataset.data_path)
     SAVE_PATH = Path(parames.multi_dataset.save_path)
@@ -209,7 +209,7 @@ def main(parames):
     """
 
     # ! only for test
-    # process(parames, "fold0", ["LCS", "HipOA"])
+    # process(parames, "fold0", ["DHS"])
 
     threads = []
 
@@ -226,6 +226,7 @@ def main(parames):
 
     # start all threads
     for thread in threads:
+        logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
         thread.start()
     # wait for all threads to finish
     for thread in threads:

@@ -22,6 +22,11 @@ Date      	By	Comments
 from typing import Dict, List
 import copy
 
+import time
+import logging
+from functools import wraps
+
+
 import os
 import shutil
 
@@ -154,13 +159,13 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
         logger (logging): _description_
     """
 
-    # change the video_path to video name
+    # change the one_video to video name
     # TODO: change the disease
-    if "LCS" or "HipOA" in one_video.parts[-2]:
+    if "LCS" in one_video.stem or "HipOA" in one_video.stem:
         one_video = Path(str(one_video).replace("ASD_not", "LCS_HipOA"))
-    elif "DHS" in one_video.parts[-2]:
+    elif "DHS" in one_video.stem:
         one_video = Path(str(one_video).replace("ASD_not", "DHS"))
-    
+        
     disease = one_video.parts[-2]
     video_name = one_video.stem
 
@@ -246,3 +251,29 @@ def process_none(batch_Dict: Dict[int, torch.Tensor], none_index: List[int]) -> 
                 raise ValueError(f"Cannot find valid replacement for index {idx}")
 
     return filtered_batch
+
+
+
+def timing(name=None, logger=None, level=logging.INFO):
+    """
+    用于函数的装饰器形式计时器，支持日志输出。
+    用法: @timing("函数名", logger)
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            label = name or '_'.join(args[2])
+            _logger = logger or logging.getLogger(func.__module__)
+            start_time = time.time()
+
+            _logger.log(level, f"⏱️ Start: {label}")
+            print(f"⏱️ Start: {label}")
+
+            result = func(*args, **kwargs)
+
+            elapsed = time.time() - start_time
+            _logger.log(level, f"✅ End: {label} in {elapsed:.3f} sec")
+            print(f"✅ End: {label} in {elapsed:.3f} sec")
+            return result
+        return wrapper
+    return decorator
