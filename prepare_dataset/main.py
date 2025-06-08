@@ -133,8 +133,6 @@ def process(parames, fold: str, disease: list):
     DATA_PATH = Path(parames.multi_dataset.data_path)
     SAVE_PATH = Path(parames.multi_dataset.save_path)
 
-    res = {"train": [], "val": []}
-
     # prepare the log file
     logger = logging.getLogger(f"Logger-{multiprocessing.current_process().name}")
 
@@ -164,7 +162,6 @@ def process(parames, fold: str, disease: list):
             # * step3: use preprocess to get information.
             # the format is: final_frames, bbox_none_index, label, optical_flow, bbox, mask, pose
             label = torch.tensor([map_CLASS[k]])  # convert the label to int
-            # THWC to CTHW
 
             (
                 bbox_none_index,
@@ -193,10 +190,11 @@ def process(parames, fold: str, disease: list):
             anno["keypoint"] = keypoints.cpu()
             anno["keypoint_score"] = keypoints_score.cpu()
 
-            res[info["flag"]].append(anno)
-            # break;
-            # save one disease to pkl file.
             save_to_pt(video_path, SAVE_PATH, anno)
+
+            del anno
+            del optical_flow, bbox, mask, keypoints, keypoints_score
+            torch.cuda.empty_cache()
 
             logger.info(f"Save the {fold} {disease} to {SAVE_PATH}")
 
@@ -217,7 +215,11 @@ def main(parames):
     """
 
     # ! only for test
-    process(parames, "fold0", ["ASD"])
+    # process(parames, "fold0", ["ASD"])
+
+    for disease in [["ASD"], ["LCS", "HipOA"], ["DHS"]]:
+        logger.info(f"Start process for {disease}")
+        process(parames, "fold0", disease)
 
     # task_config = [
     #     ("0", "fold0", ["ASD"]),
