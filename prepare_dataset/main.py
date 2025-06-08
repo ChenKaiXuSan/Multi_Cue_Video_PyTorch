@@ -32,6 +32,7 @@ import multiprocessing
 import logging
 
 import hydra
+import time
 
 from prepare_dataset.preprocess import Preprocess
 from utils.utils import save_to_pt, timing
@@ -71,6 +72,10 @@ class LoadOneDisease:
                     self.process_class(target_dir, flag)
                 else:
                     logging.warning(f"Directory not found: {target_dir}")
+
+        # sort the path_dict by disease
+        for key in self.path_dict:
+            self.path_dict[key].sort(key=lambda x: x[0].name)
 
         return self.path_dict
 
@@ -160,6 +165,7 @@ def process(parames, fold: str, disease: list):
             # the format is: final_frames, bbox_none_index, label, optical_flow, bbox, mask, pose
             label = torch.tensor([map_CLASS[k]])  # convert the label to int
             # THWC to CTHW
+
             (
                 bbox_none_index,
                 optical_flow,
@@ -194,7 +200,9 @@ def process(parames, fold: str, disease: list):
 
             logger.info(f"Save the {fold} {disease} to {SAVE_PATH}")
 
-
+def batched(iterable, n):
+    for i in range(0, len(iterable), n):
+        yield iterable[i:i + n]
 
 
 @hydra.main(
@@ -209,31 +217,37 @@ def main(parames):
     """
 
     # ! only for test
-    # process(parames, "fold0", ["DHS"])
+    process(parames, "fold0", ["ASD"])
 
-    threads = []
+    # task_config = [
+    #     ("0", "fold0", ["ASD"]),
+    #     ("1", "fold0", ["LCS", "HipOA"]),
+    #     ("0", "fold0", ["DHS"]),
+    # ]
 
-    task_config = [
-        ("0", "fold0", ["ASD"]),
-        ("0", "fold0", ["DHS"]),
-        ("1", "fold0", ["LCS", "HipOA"]),
-    ]
 
-    for device, fold, disease in task_config:
-        parames.device = device
-        thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
-        threads.append(thread)
+    # for batch in batched(task_config, 2):
+    #     logger.info(f"Start batch process for {batch}")
 
-    # start all threads
-    for thread in threads:
-        logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
-        thread.start()
-    # wait for all threads to finish
-    for thread in threads:
-        thread.join()
-    
+    #     threads = []
 
-    logger.info("All processes finished.")
+    #     for device, fold, disease in batch:
+    #         parames.device = device
+    #         thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
+    #         threads.append(thread)
+
+    #     # start all threads
+    #     for thread in threads:
+    #         logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
+    #         thread.start()
+
+    #     # wait for all threads to finish
+    #     for thread in threads:
+    #         thread.join()
+
+    #     time.sleep(1)  # sleep for a while to avoid too many processes at the same time
+
+    # logger.info("All processes finished.")
 
 
 if __name__ == "__main__":

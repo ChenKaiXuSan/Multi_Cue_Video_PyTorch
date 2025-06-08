@@ -267,13 +267,11 @@ def timing(name=None, logger=None, level=logging.INFO):
             start_time = time.time()
 
             _logger.log(level, f"⏱️ Start: {label}")
-            print(f"⏱️ Start: {label}")
 
             result = func(*args, **kwargs)
 
             elapsed = time.time() - start_time
             _logger.log(level, f"✅ End: {label} in {elapsed:.3f} sec")
-            print(f"✅ End: {label} in {elapsed:.3f} sec")
             return result
         return wrapper
     return decorator
