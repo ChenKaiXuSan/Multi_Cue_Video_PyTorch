@@ -178,52 +178,16 @@ class YOLOv11Bbox:
             enumerate(results), total=len(vframes), desc="YOLO BBox", leave=False
         ):
 
-            # first frame bbox to tracking
-            if idx == 0 and r.boxes is not None and r.boxes.shape[0] > 0:
-                bbox_dict[idx] = r.boxes.xywh[0]
-
             # judge if have bbox.
-            elif r.boxes is None or r.boxes.shape[0] == 0:
+            if r.boxes is None or r.boxes.shape[0] == 0:
                 none_index.append(idx)
                 bbox_dict[idx] = None
-
-            # if have only one bbox, we use the first one.
-            # FIXME: if the target lost the bbox, will save the other bbox.
-            elif r.boxes.shape[0] == 1:
-                bbox_dict[idx] = r.boxes.xywh[0]
-
-            elif r.boxes.shape[0] > 1:
-
-                # * save the track history
-                if r.boxes and r.boxes.is_track:
-
-                    x, y, w, h = bbox_dict[idx - 1]
-                    pre_box_center = [x, y]
-
-                    boxes = r.boxes.xywh.cpu()
-                    track_ids = r.boxes.id.int().cpu().tolist()
-
-                    distance_list = []
-
-                    for box, track_id in zip(boxes, track_ids):
-
-                        x, y, w, h = box
-
-                        distance_list.append(
-                            torch.norm(
-                                torch.tensor([x, y]) - torch.tensor(pre_box_center)
-                            )
-                        )
-
-                    # find the closest bbox to the previous bbox
-                    closest_idx = np.argmin(distance_list)
-                    closest_box = boxes[closest_idx]
-                    bbox_dict[idx] = closest_box
-
+            elif list(r.boxes.xywh.shape) == [1, 4]:
+                bbox_dict[idx] = r.boxes.xywh[0]  # 4, xywh
             else:
-                ValueError(
-                    f"the bbox shape is not correct, idx: {idx}, shape: {r.boxes.shape}"
-                )
+                # when mask > 2, just use the first mask.
+                # ? sometime will get two type for bbox.
+                bbox_dict[idx] = r.boxes.xywh[0, ...]  # 1, 4
 
             r.save(filename=str(_save_path / f"{idx}_bbox.png"))
             r.save_crop(save_dir=str(_save_crop_path), file_name=f"{idx}_bbox_crop.png")

@@ -49,7 +49,7 @@ class YOLOv11Mask:
         self.verbose = configs.YOLO.verbose
         self.img_size = configs.YOLO.img_size
 
-        self.device = f"cuda:{configs.device}" 
+        self.device = f"cuda:{configs.device}"
 
         self.save = configs.YOLO.save
         self.save_path = Path(configs.multi_dataset.save_path)
@@ -167,7 +167,7 @@ class YOLOv11Mask:
         bbox_dict = {}
         mask_dict = {}
         results = []
-        
+
         # 分批处理
         T = vframes.shape[0]
         for start in range(0, T, self.batch_size):
@@ -175,7 +175,7 @@ class YOLOv11Mask:
             batch = vframes[start:end]
             batch_result = self.get_YOLO_mask_result(batch)
             results.extend(batch_result)
-        
+
         # * process bbox
         # results = self.get_YOLO_mask_result(vframes)
 
@@ -183,59 +183,24 @@ class YOLOv11Mask:
             enumerate(results), total=len(vframes), desc="YOLO Mask", leave=False
         ):
 
-            if idx == 0 and r.boxes is not None and r.boxes.shape[0] > 0:
-                # if the first frame, we just use the first bbox.
-                bbox_dict[idx] = r.boxes.xywh[0]
-                mask_dict[idx] = self.resize_masks_to_original(
-                    r.masks.data[0], r.masks.orig_shape
-                )
-
-            # judge if have bbox.
-            elif r.boxes is None or r.boxes.shape[0] == 0:
+            # judge if have mask.
+            if r.masks is None:
                 none_index.append(idx)
                 bbox_dict[idx] = None  # empty tensor
                 mask_dict[idx] = None  # empty tensor
-
-            elif r.boxes.shape[0] == 1:
-                # if have only one bbox, we use the first one.
-                bbox_dict[idx] = r.boxes.xywh[0]
+            elif list(r.masks.data.shape) == [1, 224, 224]:
                 mask_dict[idx] = self.resize_masks_to_original(
                     r.masks.data[0], r.masks.orig_shape
                 )
-
-            elif r.boxes.shape[0] > 1:
-
-                # * save the track history
-                if r.boxes and r.boxes.is_track:
-                    x, y, w, h = bbox_dict[idx - 1]
-                    pre_box_center = [x, y]
-
-                    boxes = r.boxes.xywh.cpu()
-                    track_ids = r.boxes.id.int().cpu().tolist()
-
-                    distance_list = []
-
-                    for box, track_id in zip(boxes, track_ids):
-                        x, y, w, h = box
-
-                        distance_list.append(
-                            torch.norm(
-                                torch.tensor([x, y]) - torch.tensor(pre_box_center)
-                            )
-                        )
-
-                    # find the closest bbox to the previous bbox
-                    closest_idx = np.argmin(distance_list)
-                    closest_box = boxes[closest_idx]
-                    bbox_dict[idx] = closest_box
-                    mask_dict[idx] = self.resize_masks_to_original(
-                        r.masks.data[closest_idx], r.masks.orig_shape
-                    )
-
+                bbox_dict[idx] = r.boxes.xywh[0]
             else:
-                ValueError(
-                    f"the bbox shape is not correct, idx: {idx}, shape: {r.boxes.shape}"
+                # when mask > 2, just use the first mask.
+                # ? sometime will get two type for masks.
+                # one_batch_mask[frame] = r.masks.data[:1, ...]  # 1, 224, 224
+                mask_dict[idx] = self.resize_masks_to_original(
+                    r.masks.data[0], r.masks.orig_shape
                 )
+                bbox_dict[idx] = r.boxes.xywh[0]
 
             r.save(filename=str(_save_path / f"{idx}_mask.png"))
             r.save_crop(save_dir=str(_save_crop_path), file_name=f"{idx}_mask_crop.png")

@@ -65,8 +65,8 @@ class YOLOv11Pose:
         self.conf = configs.YOLO.conf
         self.iou = configs.YOLO.iou
         self.verbose = configs.YOLO.verbose
-        
-        self.device = f"cuda:{configs.device}" 
+
+        self.device = f"cuda:{configs.device}"
 
         self.img_size = configs.YOLO.img_size
 
@@ -184,65 +184,22 @@ class YOLOv11Pose:
             batch = vframes[start:end]
             batch_result = self.get_YOLO_pose_result(batch)
             results.extend(batch_result)
-        
-        # * process bbox
-        # results = self.get_YOLO_pose_result(vframes)
 
         for idx, r in tqdm(
             enumerate(results), total=len(vframes), desc="YOLO Pose", leave=False
         ):
 
-            if idx == 0 and r.boxes is not None and r.boxes.shape[0] > 0:
-                # if the first frame, we just use the first bbox.
-                bbox_dict[idx] = r.boxes.xywh[0]
-                pose_dict[idx] = r.keypoints.xy[0]
-                pose_dict_score[idx] = r.keypoints.conf[0]
-
-            # judge if have bbox.
-            elif r.boxes is None or r.boxes.shape[0] == 0:
+            # judge if have keypoints.
+            if list(r.keypoints.xy.shape) != [1, 17, 2]:
                 none_index.append(idx)
-                bbox_dict[idx] = None
-                pose_dict[idx] = None
-                pose_dict_score[idx] = None
-
-            elif r.boxes.shape[0] == 1:
-                # if have only one bbox, we use the first one.
-                bbox_dict[idx] = r.boxes.xywh[0]
-                pose_dict[idx] = r.keypoints.xy[0]
-                pose_dict_score[idx] = r.keypoints.conf[0]
-
-            elif r.boxes.shape[0] > 1:
-
-                # * save the track history
-                if r.boxes and r.boxes.is_track:
-                    x, y, w, h = bbox_dict[idx - 1]
-                    pre_box_center = [x, y]
-
-                    boxes = r.boxes.xywh.cpu()
-                    track_ids = r.boxes.id.int().cpu().tolist()
-
-                    distance_list = []
-
-                    for box, track_id in zip(boxes, track_ids):
-                        x, y, w, h = box
-
-                        distance_list.append(
-                            torch.norm(
-                                torch.tensor([x, y]) - torch.tensor(pre_box_center)
-                            )
-                        )
-
-                    # find the closest bbox to the previous bbox
-                    closest_idx = np.argmin(distance_list)
-                    closest_box = boxes[closest_idx]
-                    bbox_dict[idx] = closest_box
-                    pose_dict[idx] = r.keypoints.xy[closest_idx]
-                    pose_dict_score[idx] = r.keypoints.conf[closest_idx]
-
+                bbox_dict[idx] = None  # empty tensor
+                pose_dict[idx] = None  # empty tensor
+                pose_dict_score[idx] = None  # empty tensor
             else:
-                ValueError(
-                    f"the bbox shape is not correct, idx: {idx}, shape: {r.boxes.shape}"
-                )
+
+                bbox_dict[idx] = r.boxes.xywh[0]  # 4
+                pose_dict[idx] = r.keypoints.xy[0]  # 1, 17, 2
+                pose_dict_score[idx] = r.keypoints.conf[0]  # 1, 17
 
             r.save(filename=str(_save_path / f"{idx}_pose.png"))
             r.save_crop(save_dir=str(_save_crop_path), file_name=f"{idx}_pose_crop.png")
@@ -254,7 +211,9 @@ class YOLOv11Pose:
             )
             # process none index, where from bbox_dict to instead the None value with next frame tensor (or froward frame tensor).
             pose_dict = process_none(batch_Dict=pose_dict, none_index=none_index)
-            pose_dict_score = process_none(batch_Dict=pose_dict_score, none_index=none_index)
+            pose_dict_score = process_none(
+                batch_Dict=pose_dict_score, none_index=none_index
+            )
             # bbox_dict = process_none(batch_Dict=bbox_dict, none_index=none_index)
 
         # convert dict to tensor

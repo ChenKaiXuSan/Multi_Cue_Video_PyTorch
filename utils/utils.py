@@ -252,6 +252,40 @@ def process_none(batch_Dict: Dict[int, torch.Tensor], none_index: List[int]) -> 
 
     return filtered_batch
 
+def process_none_old(batch: torch.tensor, batch_Dict: dict, none_index: list):
+    """
+    process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
+
+    Args:
+        batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
+        none_index (list): none index list map to batch_Dict, here not use this.
+
+    Returns:
+        list: list include the replace value for None value.
+    """
+
+    boundary = len(batch_Dict) - 1  # 8
+    filter_batch = batch
+
+    for k, v in batch_Dict.items():
+        if v == None:
+            if (
+                None in list(batch_Dict.values())[k:]
+                and len(set(list(batch_Dict.values())[k:])) == 1
+            ):
+                next_idx = k - 1
+            else:
+                next_idx = k + 1
+                while batch_Dict[next_idx] == None and next_idx < boundary:
+                    next_idx += 1
+
+            batch_Dict[k] = batch_Dict[next_idx]
+
+
+            # * copy the next frame to none index
+            filter_batch[:, :, k, ...] = batch[:, :, next_idx, ...]
+
+    return list(batch_Dict.values()), filter_batch
 
 
 def timing(name=None, logger=None, level=logging.INFO):

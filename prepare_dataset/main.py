@@ -32,7 +32,6 @@ import multiprocessing
 import logging
 
 import hydra
-import time
 
 from prepare_dataset.preprocess import Preprocess
 from utils.utils import save_to_pt, timing
@@ -42,6 +41,8 @@ CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
 map_CLASS = {"ASD": 0, "DHS": 1, "LCS_HipOA": 2, "Normal": 3}  # map the class to int
 
 logger = logging.getLogger(__name__)
+
+
 class LoadOneDisease:
     def __init__(self, data_path: str | Path, fold: str, diseases: list[str]) -> None:
         self.DATA_PATH = Path(data_path)
@@ -55,7 +56,9 @@ class LoadOneDisease:
                 if disease in video_file.name.split("_"):
                     info = {"flag": flag, "disease": disease}
                     key = (
-                        disease if disease in CLASS else CLASS[2]  # default to LCS_HipOA
+                        disease
+                        if disease in CLASS
+                        else CLASS[2]  # default to LCS_HipOA
                     )
                     self.path_dict[key].append((video_file, info))
                     break  # avoid double append if multiple diseases match
@@ -78,55 +81,6 @@ class LoadOneDisease:
             self.path_dict[key].sort(key=lambda x: x[0].name)
 
         return self.path_dict
-
-# class LoadOneDisease:
-#     def __init__(self, data_path, fold, disease) -> None:
-
-#         self.DATA_PATH = data_path
-#         self.fold = fold
-#         self.disease = disease
-#         # this is the return dict
-#         self.path_dict = {key: [] for key in CLASS}
-
-#     def process_class(self, one_class: Path, flag: str):
-#         for d in self.disease:
-#             if d in ["DHS", "LCS", "HipOA"]:
-#                 for one_video in sorted(one_class.iterdir()):
-#                     if d in one_video.name.split("_"):
-#                         info = {
-#                             "flag": flag,
-#                             "disease": d,
-#                         }
-
-#                         if d in CLASS:
-#                             self.path_dict[d].append((Path(one_video), info))
-#                         else:
-#                             self.path_dict[CLASS[2]].append((Path(one_video), info))
-#                     else:
-#                         continue
-
-#             else:
-#                 for one_video in sorted(one_class.iterdir()):
-#                     if d in one_video.name.split("_"):
-#                         info = {"flag": flag, "disease": d}
-
-#                         self.path_dict[d].append((Path(one_video), info))
-
-#     def __call__(self) -> dict:
-#         one_fold_path = Path(self.DATA_PATH, self.fold)
-
-#         for flag in ["train", "val"]:
-#             one_flag_path = Path(one_fold_path, flag)
-
-#             for one_class in self.disease:
-#                 if one_class == "DHS" or one_class == "LCS" or one_class == "HipOA":
-#                     new_path = one_flag_path / "ASD_not"
-#                 else:
-#                     new_path = one_flag_path / one_class
-
-#                 self.process_class(new_path, flag)
-
-#         return self.path_dict
 
 @timing(logger=logger)
 def process(parames, fold: str, disease: list):
@@ -177,12 +131,12 @@ def process(parames, fold: str, disease: list):
 
             # * when use mmaction, we need convert the keypoint torch to numpy
             anno["video_dir"] = video_path
-            anno["frames"] = vframes.permute(0, 3, 1, 2).cpu() # (T, C, H, W)
+            anno["frames"] = vframes.permute(0, 3, 1, 2).cpu()  # (T, C, H, W)
             anno["label"] = int(label)
             anno["total_frames"] = vframes.shape[0]
             anno["img_shape"] = (vframes.shape[1], vframes.shape[2])
             anno["bbox_none_index"] = bbox_none_index
-            
+
             # multi modiality
             anno["optical_flow"] = optical_flow.cpu()
             anno["bbox"] = bbox.cpu()
@@ -198,14 +152,13 @@ def process(parames, fold: str, disease: list):
 
             logger.info(f"Save the {fold} {disease} to {SAVE_PATH}")
 
+
 def batched(iterable, n):
     for i in range(0, len(iterable), n):
-        yield iterable[i:i + n]
+        yield iterable[i : i + n]
 
 
-@hydra.main(
-    config_path="../configs/", config_name="prepare_dataset"
-)
+@hydra.main(config_path="../configs/", config_name="prepare_dataset")
 def main(parames):
     """
     main, for the multiprocessing using.
@@ -217,39 +170,38 @@ def main(parames):
     # ! only for test
     # process(parames, "fold0", ["ASD"])
 
-    for disease in [["ASD"], ["LCS", "HipOA"], ["DHS"]]:
-        logger.info(f"Start process for {disease}")
-        process(parames, "fold0", disease)
+    # for disease in [["ASD"], ["LCS", "HipOA"], ["DHS"]]:
+    #     logger.info(f"Start process for {disease}")
+    #     process(parames, "fold0", disease)
 
-    # task_config = [
-    #     ("0", "fold0", ["ASD"]),
-    #     ("1", "fold0", ["LCS", "HipOA"]),
-    #     ("0", "fold0", ["DHS"]),
-    # ]
+    task_config = [
+        ("0", "fold0", ["ASD"]),
+        ("1", "fold0", ["LCS", "HipOA"]),
+        ("0", "fold0", ["DHS"]),
+    ]
 
+    for batch in batched(task_config, 2):
+        logger.info(f"Start batch process for {batch}")
 
-    # for batch in batched(task_config, 2):
-    #     logger.info(f"Start batch process for {batch}")
+        threads = []
 
-    #     threads = []
+        for device, fold, disease in batch:
+            parames.device = device
+            thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
+            threads.append(thread)
 
-    #     for device, fold, disease in batch:
-    #         parames.device = device
-    #         thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
-    #         threads.append(thread)
+        # start all threads
+        for thread in threads:
+            logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
+            thread.start()
 
-    #     # start all threads
-    #     for thread in threads:
-    #         logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
-    #         thread.start()
+        # wait for all threads to finish
+        for thread in threads:
+            thread.join()
 
-    #     # wait for all threads to finish
-    #     for thread in threads:
-    #         thread.join()
+        time.sleep(1)  # sleep for a while to avoid too many processes at the same time
 
-    #     time.sleep(1)  # sleep for a while to avoid too many processes at the same time
-
-    # logger.info("All processes finished.")
+    logger.info("All processes finished.")
 
 
 if __name__ == "__main__":
