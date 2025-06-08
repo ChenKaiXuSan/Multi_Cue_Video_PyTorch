@@ -83,6 +83,7 @@ class LoadOneDisease:
 
         return self.path_dict
 
+
 @timing(logger=logger)
 def process(parames, fold: str, disease: list):
     DATA_PATH = Path(parames.multi_dataset.data_path)
@@ -174,7 +175,7 @@ def main(parames):
     for disease in [["ASD"], ["LCS", "HipOA"], ["DHS"]]:
         logger.info(f"Start process for {disease}")
         process(parames, "fold0", disease)
-    
+
     # FIXME: 不知道为什么用不了多线程，一条会莫名的死掉
     # task_config = [
     #     ("0", "fold0", ["ASD"]),
