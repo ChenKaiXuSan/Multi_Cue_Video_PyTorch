@@ -35,4 +35,4 @@ multi_dataset:
 log_path: "${gait_dataset.save_path}/logs/"
 task: ["pose", "mask", "bbox", "optical_flow"]
 device: 0
-batch_size: 200
+batch_size: 128
