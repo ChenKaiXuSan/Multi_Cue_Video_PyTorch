@@ -30,6 +30,7 @@ from torchvision.io import read_video
 
 import multiprocessing
 import logging
+import time
 
 import hydra
 
@@ -170,36 +171,37 @@ def main(parames):
     # ! only for test
     # process(parames, "fold0", ["ASD"])
 
-    # for disease in [["ASD"], ["LCS", "HipOA"], ["DHS"]]:
-    #     logger.info(f"Start process for {disease}")
-    #     process(parames, "fold0", disease)
+    for disease in [["ASD"], ["LCS", "HipOA"], ["DHS"]]:
+        logger.info(f"Start process for {disease}")
+        process(parames, "fold0", disease)
+    
+    # FIXME: 不知道为什么用不了多线程，一条会莫名的死掉
+    # task_config = [
+    #     ("0", "fold0", ["ASD"]),
+    #     ("1", "fold0", ["LCS", "HipOA"]),
+    #     ("0", "fold0", ["DHS"]),
+    # ]
 
-    task_config = [
-        ("0", "fold0", ["ASD"]),
-        ("1", "fold0", ["LCS", "HipOA"]),
-        ("0", "fold0", ["DHS"]),
-    ]
+    # for batch in batched(task_config, 2):
+    #     logger.info(f"Start batch process for {batch}")
 
-    for batch in batched(task_config, 2):
-        logger.info(f"Start batch process for {batch}")
+    #     threads = []
 
-        threads = []
+    #     for device, fold, disease in batch:
+    #         parames.device = device
+    #         thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
+    #         threads.append(thread)
 
-        for device, fold, disease in batch:
-            parames.device = device
-            thread = multiprocessing.Process(target=process, args=(parames, fold, disease))
-            threads.append(thread)
+    #     # start all threads
+    #     for thread in threads:
+    #         logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
+    #         thread.start()
 
-        # start all threads
-        for thread in threads:
-            logger.info(f"Start thread {thread.name} for {thread._target.__name__}")
-            thread.start()
+    #     # wait for all threads to finish
+    #     for thread in threads:
+    #         thread.join()
 
-        # wait for all threads to finish
-        for thread in threads:
-            thread.join()
-
-        time.sleep(1)  # sleep for a while to avoid too many processes at the same time
+    #     time.sleep(1)  # sleep for a while to avoid too many processes at the same time
 
     logger.info("All processes finished.")
 
