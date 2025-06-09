@@ -35,7 +35,7 @@ import time
 import hydra
 
 from prepare_dataset.preprocess import Preprocess
-from utils.utils import save_to_pt, timing
+from utils.utils import save_to_pt, timing, save_to_pt_gz
 
 RAW_CLASS = ["ASD", "DHS", "LCS", "HipOA"]
 CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
@@ -146,7 +146,8 @@ def process(parames, fold: str, disease: list):
             anno["keypoint"] = keypoints.cpu()
             anno["keypoint_score"] = keypoints_score.cpu()
 
-            save_to_pt(video_path, SAVE_PATH, anno)
+            # save_to_pt(video_path, SAVE_PATH, anno)
+            save_to_pt_gz(video_path, SAVE_PATH, anno)
 
             del anno
             del optical_flow, bbox, mask, keypoints, keypoints_score

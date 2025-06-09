@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
-'''
+"""
 File: /workspace/code/utils/utils copy.py
 Project: /workspace/code/utils
 Created Date: Saturday June 7th 2025
@@ -18,14 +18,15 @@ Copyright (c) 2025 The University of Tsukuba
 HISTORY:
 Date      	By	Comments
 ----------	---	---------------------------------------------------------
-'''
+"""
+
 from typing import Dict, List
 import copy
 
 import time
 import logging
 from functools import wraps
-
+import gzip
 
 import os
 import shutil
@@ -120,7 +121,6 @@ def make_folder(path, *args):
 def merge_frame_to_video(
     save_path: Path, person: str, video_name: str, flag: str, filter: bool = False
 ) -> None:
-
     if filter:
         _save_path = save_path / "vis" / "filter_img" / flag / person / video_name
         _out_path = save_path / "vis" / "filter_video" / flag / person
@@ -165,7 +165,7 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
         one_video = Path(str(one_video).replace("ASD_not", "LCS_HipOA"))
     elif "DHS" in one_video.stem:
         one_video = Path(str(one_video).replace("ASD_not", "DHS"))
-        
+
     disease = one_video.parts[-2]
     video_name = one_video.stem
 
@@ -176,6 +176,59 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
     torch.save(pt_info, save_path_with_name)
 
     logger.info(f"Save the {video_name} to {save_path_with_name}")
+
+
+def save_to_pt_gz(
+    one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]
+) -> None:
+    """Save the sample info to compressed .pt.gz file.
+
+    Args:
+        one_video (Path): path to the original video
+        save_path (Path): root path to save the compressed .pt.gz
+        pt_info (dict): dictionary of tensors or data to be saved
+        logger (logging.Logger): logger instance for info output
+    """
+
+    # Adjust disease label based on video name
+    if "LCS" in one_video.stem or "HipOA" in one_video.stem:
+        one_video = Path(str(one_video).replace("ASD_not", "LCS_HipOA"))
+    elif "DHS" in one_video.stem:
+        one_video = Path(str(one_video).replace("ASD_not", "DHS"))
+
+    disease = one_video.parts[-2]
+    video_name = one_video.stem
+
+    save_path_with_name = save_path / "pt_gz" / disease / (video_name + ".pt.gz")
+    make_folder(save_path_with_name.parent)
+
+    # 类型转换 + 压缩准备
+    for k, v in pt_info.items():
+        # print(f"处理 {k}: {type(v)}")
+
+        # 不需处理的基本类型
+        if isinstance(v, (str, int, tuple)):
+            continue
+
+        # Path 类型转为字符串
+        elif isinstance(v, Path):
+            pt_info[k] = str(v)
+
+        # Tensor 类型处理
+        elif isinstance(v, torch.Tensor):
+            if k == "mask":
+                pt_info[k] = v.to(torch.uint8)
+            elif v.is_floating_point() and v.dtype == torch.float32:
+                try:
+                    pt_info[k] = v.to(torch.float16)
+                except Exception as e:
+                    print(f"警告: 无法将 {k} 转换为 float16: {e}")
+
+    # Save with gzip compression
+    with gzip.open(save_path_with_name, "wb") as f:
+        torch.save(pt_info, f)
+
+    logger.info(f"Compressed save: {video_name} → {save_path_with_name}")
 
 
 # def process_none(batch_Dict: dict[torch.Tensor], none_index: list):
@@ -197,8 +250,8 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
 
 #         # * if the index is None, we need to replace it with next frame.
 #         if batch_Dict[i] is None:
-            
-#             next_idx = i 
+
+#             next_idx = i
 #             while True:
 #                 # * if the next index is None, we need to find the next not None index.
 #                 if next_idx < boundary and batch_Dict[next_idx] is None:
@@ -214,7 +267,9 @@ def save_to_pt(one_video: Path, save_path: Path, pt_info: dict[torch.Tensor]) ->
 #     return filter_batch
 
 
-def process_none(batch_Dict: Dict[int, torch.Tensor], none_index: List[int]) -> Dict[int, torch.Tensor]:
+def process_none(
+    batch_Dict: Dict[int, torch.Tensor], none_index: List[int]
+) -> Dict[int, torch.Tensor]:
     """
     Replace None entries in the batch dictionary with the next available valid tensor.
     If no valid tensor is found ahead, use the last valid tensor before the boundary.
@@ -252,6 +307,7 @@ def process_none(batch_Dict: Dict[int, torch.Tensor], none_index: List[int]) -> 
 
     return filtered_batch
 
+
 def process_none_old(batch: torch.tensor, batch_Dict: dict, none_index: list):
     """
     process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
@@ -281,7 +337,6 @@ def process_none_old(batch: torch.tensor, batch_Dict: dict, none_index: list):
 
             batch_Dict[k] = batch_Dict[next_idx]
 
-
             # * copy the next frame to none index
             filter_batch[:, :, k, ...] = batch[:, :, next_idx, ...]
 
@@ -293,10 +348,11 @@ def timing(name=None, logger=None, level=logging.INFO):
     用于函数的装饰器形式计时器，支持日志输出。
     用法: @timing("函数名", logger)
     """
+
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            label = name or '_'.join(args[2])
+            label = name or "_".join(args[2])
             _logger = logger or logging.getLogger(func.__module__)
             start_time = time.time()
 
@@ -307,5 +363,7 @@ def timing(name=None, logger=None, level=logging.INFO):
             elapsed = time.time() - start_time
             _logger.log(level, f"✅ End: {label} in {elapsed:.3f} sec")
             return result
+
         return wrapper
+
     return decorator
