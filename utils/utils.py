@@ -230,43 +230,6 @@ def save_to_pt_gz(
 
     logger.info(f"Compressed save: {video_name} → {save_path_with_name}")
 
-
-# def process_none(batch_Dict: dict[torch.Tensor], none_index: list):
-#     """
-#     process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
-
-#     Args:
-#         batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
-#         none_index (list): none index list map to batch_Dict, here not use this.
-
-#     Returns:
-#         list: list include the replace value for None value.
-#     """
-
-#     boundary = len(batch_Dict) - 1
-#     filter_batch = batch_Dict.copy()
-
-#     for i in none_index:
-
-#         # * if the index is None, we need to replace it with next frame.
-#         if batch_Dict[i] is None:
-
-#             next_idx = i
-#             while True:
-#                 # * if the next index is None, we need to find the next not None index.
-#                 if next_idx < boundary and batch_Dict[next_idx] is None:
-#                     next_idx += 1
-#                 else:
-#                     break
-
-#             if next_idx < boundary:
-#                 filter_batch[i] = batch_Dict[next_idx]
-#             else:
-#                 filter_batch[i] = batch_Dict[boundary-1]
-
-#     return filter_batch
-
-
 def process_none(
     batch_Dict: Dict[int, torch.Tensor], none_index: List[int]
 ) -> Dict[int, torch.Tensor]:
@@ -306,41 +269,6 @@ def process_none(
                 raise ValueError(f"Cannot find valid replacement for index {idx}")
 
     return filtered_batch
-
-
-def process_none_old(batch: torch.tensor, batch_Dict: dict, none_index: list):
-    """
-    process_none, where from batch_Dict to instead the None value with next frame tensor (or froward frame tensor).
-
-    Args:
-        batch_Dict (dict): batch in Dict, where include the None value when yolo dont work.
-        none_index (list): none index list map to batch_Dict, here not use this.
-
-    Returns:
-        list: list include the replace value for None value.
-    """
-
-    boundary = len(batch_Dict) - 1  # 8
-    filter_batch = batch
-
-    for k, v in batch_Dict.items():
-        if v == None:
-            if (
-                None in list(batch_Dict.values())[k:]
-                and len(set(list(batch_Dict.values())[k:])) == 1
-            ):
-                next_idx = k - 1
-            else:
-                next_idx = k + 1
-                while batch_Dict[next_idx] == None and next_idx < boundary:
-                    next_idx += 1
-
-            batch_Dict[k] = batch_Dict[next_idx]
-
-            # * copy the next frame to none index
-            filter_batch[:, :, k, ...] = batch[:, :, next_idx, ...]
-
-    return list(batch_Dict.values()), filter_batch
 
 
 def timing(name=None, logger=None, level=logging.INFO):

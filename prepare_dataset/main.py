@@ -35,7 +35,7 @@ import time
 import hydra
 
 from prepare_dataset.preprocess import Preprocess
-from utils.utils import save_to_pt, timing, save_to_pt_gz
+from utils.utils import timing, save_to_pt_gz
 
 RAW_CLASS = ["ASD", "DHS", "LCS", "HipOA"]
 CLASS = ["ASD", "DHS", "LCS_HipOA", "Normal"]
@@ -132,7 +132,7 @@ def process(parames, fold: str, disease: list):
             anno = dict()
 
             # * when use mmaction, we need convert the keypoint torch to numpy
-            anno["video_dir"] = video_path
+            anno["video"] = video_path
             anno["frames"] = vframes.permute(0, 3, 1, 2).cpu()  # (T, C, H, W)
             anno["label"] = int(label)
             anno["total_frames"] = vframes.shape[0]
@@ -146,15 +146,11 @@ def process(parames, fold: str, disease: list):
             anno["keypoint"] = keypoints.cpu()
             anno["keypoint_score"] = keypoints_score.cpu()
 
-            # save_to_pt(video_path, SAVE_PATH, anno)
             save_to_pt_gz(video_path, SAVE_PATH, anno)
 
             del anno
             del optical_flow, bbox, mask, keypoints, keypoints_score
             torch.cuda.empty_cache()
-
-            logger.info(f"Save the {fold} {disease} to {SAVE_PATH}")
-
 
 def batched(iterable, n):
     for i in range(0, len(iterable), n):

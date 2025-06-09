@@ -47,74 +47,81 @@ class Preprocess:
         self.yolo_model_mask = self._init_task("mask", YOLOv11Mask)
         self.of_model = self._init_task("optical_flow", OpticalFlow)
 
-
     def _init_task(self, task_name: str, cls):
         return cls(self.config) if task_name in self.task else None
-    
+
     def _empty_tensor(self, shape: tuple, dtype=torch.float32):
         """
         Create an empty tensor with the given shape and dtype.
         """
         return torch.empty(shape, dtype=dtype)
-    
-    # def shape_check(self, check: list):
-    #     """
-    #     shape_check check the given value shape, and assert the shape.
 
-    #     check list include:
-    #     # batch, (b, c, t, h, w)
-    #     # bbox, (b, t, 4) (cxcywh)
-    #     # mask, (b, 1, t, h, w)
-    #     # keypoint, (b, t, 17, 2)
-    #     # optical_flow, (b, 2, t, h, w)
+    def shape_check(self, check_dict: dict[str, torch.Tensor]):
+        """
+        shape_check check the given value shape, and assert the shape.
 
-    #     Args:
-    #         check (list): checked value, in list.
-    #     """
+        check list include:
+        # batch, (t, h, w, c)
+        # bbox, (t, 4) (cxcywh)
+        # mask, (1, t, h, w)
+        # keypoint, (t, 17, 2)
+        # optical_flow, (2, t, h, w)
 
-    #     # first value in list is video, use this as reference.
-    #     t, h, w, c = check[0].shape
+        Args:
+            check (list): checked value, in list.
+        """
 
-    #     # frame check, we just need start from 1.
-    #     for ck in check[0:]:
-    #         if ck is None:
-    #             continue
-    #         # for label shape
-    #         if len(ck.shape) == 1:
-    #             assert ck.shape[0] == b
-    #         # for bbox shape
-    #         elif len(ck.shape) == 3:
-    #             assert ck.shape[0] == b and ck.shape[1] == t
-    #         # for mask shape and optical flow shape
-    #         elif len(ck.shape) == 5:
-    #             assert ck.shape[0] == b and (ck.shape[2] == t or ck.shape[2] == t - 1)
-    #         # for keypoint shape
-    #         elif len(ck.shape) == 4:
-    #             assert ck.shape[0] == b and ck.shape[1] == t and ck.shape[2] == 17
-    #         else:
-    #             raise ValueError("shape not match")
+        t, h, w, c = check_dict["video"].shape
 
+        for key, ck in check_dict.items():
+
+            if ck is None or key == "video":
+                continue
+
+            elif key == "optical_flow":
+                # optical flow shape check
+                assert ck.shape == (0, 2, h, w) or ck.shape == (t, 2, h, w), (
+                    f"Optical flow shape mismatch: {ck.shape} != {(0, 2, h, w)} or {(t, 2, h, w)}"
+                )
+            elif key == "bbox":
+                # bbox shape check
+                assert ck.shape == (0, 4) or ck.shape == (t, 4), (
+                    f"Bounding box shape mismatch: {ck.shape} != {(0, 4)} or {(t, 4)}"
+                )
+            elif key == "mask":
+                # mask shape check
+                assert ck.shape == (0, 1, h, w) or ck.shape == (t, 1, h, w), (
+                    f"Mask shape mismatch: {ck.shape} != {(0, 1, h, w)} or {(t, 1, h, w)}"
+                )
+            elif key == "pose":
+                # pose shape check
+                assert ck.shape == (0, 17, 2) or ck.shape == (t, 17, 2), (
+                    f"Pose shape mismatch: {ck.shape} != {(0, 17, 2)} or {(t, 17, 2)}"
+                )
+            elif key == "pose_score":
+                # pose score shape check
+                assert ck.shape == (0, 17) or ck.shape == (t, 17), (
+                    f"Pose score shape mismatch: {ck.shape} != {(0, 17)} or {(t, 17)}"
+                )
+            else:
+                raise ValueError(f"Unknown key in check_dict: {key}")
+            
     def __call__(self, vframes: torch.Tensor, video_path: Path):
-        
+
         # change the video_path to video name
         # TODO: change the disease
         if "LCS" in video_path.stem or "HipOA" in video_path.stem:
             video_path = Path(str(video_path).replace("ASD_not", "LCS_HipOA"))
         elif "DHS" in video_path.stem:
             video_path = Path(str(video_path).replace("ASD_not", "DHS"))
-            
-            
-        T, H, W, C = vframes.shape
 
-        # FIXME: OOM error
+        T, H, W, C = vframes.shape
 
         # * process optical flow
         if self.of_model:
             optical_flow = self.of_model(vframes, video_path)
         else:
-            optical_flow = self._empty_tensor(
-                (0, 2, H, W), dtype=torch.float32
-            )
+            optical_flow = self._empty_tensor((0, 2, H, W), dtype=torch.float32)
 
         # * process bbox
         if self.yolo_model_bbox:
@@ -124,9 +131,7 @@ class Preprocess:
             )
         else:
             bbox_none_index = []
-            bbox = self._empty_tensor(
-                (0, 4), dtype=torch.float32
-            )
+            bbox = self._empty_tensor((0, 4), dtype=torch.float32)
 
         # * process pose
         if self.yolo_model_pose:
@@ -134,23 +139,27 @@ class Preprocess:
                 vframes, video_path
             )
         else:
-            pose = self._empty_tensor(
-                (0, 17, 3), dtype=torch.float32
-            )
-            pose_score = self._empty_tensor(
-                (0, 17), dtype=torch.float32
-            )
-            
+            pose = self._empty_tensor((0, 17, 3), dtype=torch.float32)
+            pose_score = self._empty_tensor((0, 17), dtype=torch.float32)
+
         # * process mask
         if self.yolo_model_mask:
             mask, mask_none_index, mask_results = self.yolo_model_mask(
                 vframes, video_path
             )
         else:
-            mask = self._empty_tensor(
-                (0, 1, H, W), dtype=torch.float32
-            )
+            mask = self._empty_tensor((0, 1, H, W), dtype=torch.float32)
 
         # * shape check
+        self.shape_check(
+            {
+                "video": vframes,
+                "optical_flow": optical_flow,
+                "bbox": bbox,
+                "mask": mask,
+                "pose": pose,
+                "pose_score": pose_score,
+            }
+        )
 
         return bbox_none_index, optical_flow, bbox, mask, pose, pose_score

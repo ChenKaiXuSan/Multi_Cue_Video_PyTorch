@@ -22,24 +22,18 @@ Date      	By	Comments
 
 from tqdm import tqdm
 from pathlib import Path
+import logging
 
 import torch
-import cv2
 
-import logging
-import numpy as np
 from ultralytics import YOLO
 
-from utils.utils import merge_frame_to_video, process_none
+from utils.utils import process_none
 
 logger = logging.getLogger(__name__)
 
-
 class YOLOv11Bbox:
     def __init__(self, configs) -> None:
-        super().__init__()
-
-        # load model
         self.yolo_bbox = YOLO(configs.YOLO.bbox_ckpt)
         self.tracking = configs.YOLO.tracking
 
@@ -48,180 +42,71 @@ class YOLOv11Bbox:
         self.verbose = configs.YOLO.verbose
         self.device = f"cuda:{configs.device}"
 
-        self.img_size = configs.YOLO.img_size
         self.batch_size = configs.batch_size
-
         self.save = configs.YOLO.save
         self.save_path = Path(configs.multi_dataset.save_path)
 
-    def get_YOLO_bbox_result(self, vframes: torch.Tensor, video_path: Path = None):
-
-        vframes_numpy = vframes.numpy()
-        vframes_bgr = vframes_numpy[:, :, :, ::-1]
-        frame_list_bgr = [img for img in vframes_bgr]
-
+    def _run_yolo(self, frames_bgr):
         if self.tracking:
-
-            results = self.yolo_bbox.track(
-                source=frame_list_bgr,
+            return self.yolo_bbox.track(
+                source=frames_bgr,
                 conf=self.conf,
                 iou=self.iou,
                 classes=0,
-                # stream=True,
                 verbose=self.verbose,
                 device=self.device,
-                # save=True,
-                # save_frames=True,
-                # save_conf=True,
-                # save_crop=True,
-                # project=self.save_path / "vis",
-                # name="bbox"
             )
         else:
-
-            results = self.yolo_bbox.predict(
-                source=frame_list_bgr,
+            return self.yolo_bbox.predict(
+                source=frames_bgr,
                 conf=self.conf,
                 iou=self.iou,
                 classes=0,
-                # stream=True,
                 verbose=self.verbose,
                 device=self.device,
-                # save=True,
-                # save_frames=True,
-                # save_conf=True,
-                # save_crop=True,
-                # project=self.save_path / "vis",
-                # name="bbox"
             )
 
-        return results
-
-    def draw_and_save_boxes(
-        self, img_tensor: torch.Tensor, bboxes, save_path: Path, video_path: Path
-    ):
-
-        _video_name = video_path.stem
-        _person = video_path.parts[-2]
-
-        # filter save path
-        _save_path = save_path / "vis" / "filter_img" / "bbox" / _person / _video_name
-
-        if not _save_path.exists():
-            _save_path.mkdir(parents=True, exist_ok=True)
-
-        for i, (img_tensor, xywh) in tqdm(
-            enumerate(zip(img_tensor, bboxes)),
-            total=len(img_tensor),
-            desc="Draw and Save BBoxes",
-            leave=False,
-        ):
-
-            # 转换为 numpy 图像（H, W, C）
-            img_np = img_tensor.cpu().numpy()
-            if img_np.max() <= 1.0:
-                img_np = (img_np * 255).astype(np.uint8)
-            else:
-                img_np = img_np.astype(np.uint8)
-
-            x_center, y_center, w, h = xywh
-
-            # 画框 + 标签
-            x1 = int(x_center - w / 2)
-            y1 = int(y_center - h / 2)
-            x2 = int(x_center + w / 2)
-            y2 = int(y_center + h / 2)
-
-            cv2.rectangle(
-                img_np,
-                (x1, y1),
-                (x2, y2),
-                (0, 255, 0),  # 绿色边框
-                2,
-            )
-
-            _img_save_path = Path(_save_path) / f"{i}_bbox_filter.jpg"
-            # 保存图像
-            cv2.imwrite(str(_img_save_path), cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR))
-
-        merge_frame_to_video(save_path, _person, _video_name, "bbox", filter=True)
+    def get_YOLO_bbox_result(self, vframes: torch.Tensor):
+        frames_bgr = vframes.numpy()[:, :, :, ::-1]
+        frame_list_bgr = [img for img in frames_bgr]
+        return self._run_yolo(frame_list_bgr)
 
     def __call__(self, vframes: torch.Tensor, video_path: Path):
+        video_name = video_path.stem
+        person = video_path.parts[-2]
 
-        _video_name = video_path.stem
-        _person = video_path.parts[-2]
-
-        _save_path = self.save_path / "vis" / "img" / "bbox" / _person / _video_name
-        if not _save_path.exists():
-            _save_path.mkdir(parents=True, exist_ok=True)
-        _save_crop_path = (
-            self.save_path / "vis" / "img" / "bbox_crop" / _person / _video_name
+        save_path = self.save_path / "vis" / "img" / "bbox" / person / video_name
+        save_crop_path = (
+            self.save_path / "vis" / "img" / "bbox_crop" / person / video_name
         )
-        if not _save_crop_path.exists():
-            _save_crop_path.mkdir(parents=True, exist_ok=True)
+        save_path.mkdir(parents=True, exist_ok=True)
+        save_crop_path.mkdir(parents=True, exist_ok=True)
 
-        none_index = []
-        bbox_dict = {}
-        results = []
-
-        # 分批处理
         T = vframes.shape[0]
+        none_index, bbox_dict, results = [], {}, []
+
         for start in range(0, T, self.batch_size):
-            end = min(start + self.batch_size, T)
-            batch = vframes[start:end]
-            batch_result = self.get_YOLO_bbox_result(batch)
-            results.extend(batch_result)
-        # # * process bbox
-        # results = self.get_YOLO_bbox_result(vframes)
+            batch = vframes[start : min(start + self.batch_size, T)]
+            results.extend(self.get_YOLO_bbox_result(batch))
 
-        for idx, r in tqdm(
-            enumerate(results), total=len(vframes), desc="YOLO BBox", leave=False
-        ):
-
-            # judge if have bbox.
+        for idx, r in tqdm(enumerate(results), total=T, desc="YOLO BBox", leave=False):
             if r.boxes is None or r.boxes.shape[0] == 0:
                 none_index.append(idx)
                 bbox_dict[idx] = None
-            elif list(r.boxes.xywh.shape) == [1, 4]:
-                bbox_dict[idx] = r.boxes.xywh[0]  # 4, xywh
             else:
-                # when mask > 2, just use the first mask.
-                # ? sometime will get two type for bbox.
-                bbox_dict[idx] = r.boxes.xywh[0, ...]  # 1, 4
+                bbox_dict[idx] = (
+                    r.boxes.xywh[0] if r.boxes.xywh.ndim == 2 else r.boxes.xywh
+                )
 
-            r.save(filename=str(_save_path / f"{idx}_bbox.png"))
-            r.save_crop(save_dir=str(_save_crop_path), file_name=f"{idx}_bbox_crop.png")
+            if self.save:
+                r.save(filename=str(save_path / f"{idx}_bbox.png"))
+                r.save_crop(
+                    save_dir=str(save_crop_path), file_name=f"{idx}_bbox_crop.png"
+                )
 
-        # * process none index
-        if len(none_index) > 0:
-            logger.warning(
-                f"the {video_path.stem} has {len(none_index)} frames without bbox."
-            )
+        if none_index:
+            logger.warning(f"{video_name} has {len(none_index)} frames without bbox.")
             bbox_dict = process_none(bbox_dict, none_index)
 
-        # convert bbox_dict to tensor
-        bbox = torch.stack(
-            [bbox_dict[k] for k in sorted(bbox_dict.keys())],
-            dim=0,
-        )
-
-        # * save the result to img
-        if self.save:
-            # save the video frames to video file
-            merge_frame_to_video(
-                self.save_path,
-                person=_person,
-                video_name=_video_name,
-                flag="bbox",
-                filter=False,
-            )
-
-            # filter save path
-            self.draw_and_save_boxes(
-                img_tensor=vframes,
-                bboxes=bbox,
-                save_path=self.save_path,
-                video_path=video_path,
-            )
-
+        bbox = torch.stack([bbox_dict[k] for k in sorted(bbox_dict.keys())], dim=0)
         return bbox, none_index, results
