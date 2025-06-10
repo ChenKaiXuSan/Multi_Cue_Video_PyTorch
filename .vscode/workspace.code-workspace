@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"name": "multi_cue",
+			"path": "/workspace/code/"
+		},
+		{
+			"name": "dataset",
+			"path": "/workspace/data/"
+		},
+		{
+			"name": "Skeleton_ASD_PyTorch",
+			"path": "../../Skeleton_ASD_PyTorch"
+		},
+		{
+			"name": "Skiing_Analysis_PyTorch",
+			"path": "../../Skiing_Analysis_PyTorch"
+		}
+	]
+}

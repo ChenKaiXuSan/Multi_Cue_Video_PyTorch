@@ -1,211 +1,165 @@
-'''
-File: preprocess.py
-Project: models
-Created Date: 2023-09-03 13:44:00
-Author: chenkaixu
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+"""
+File: /workspace/code/Skiing_Analysis_PyTorch/prepare_dataset/preprocess.py
+Project: /workspace/code/Skiing_Analysis_PyTorch/prepare_dataset
+Created Date: Wednesday April 23rd 2025
+Author: Kaixu Chen
 -----
 Comment:
-preprocess script include the pose estimation, optical flow, and mask.
-This is used for define the one gait cycle from video.
- 
-Have a good code time!
+
+Have a good code time :)
 -----
-Last Modified: Saturday April 6th 2024 8:08:31 am
+Last Modified: Wednesday April 23rd 2025 12:56:44 pm
 Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
 -----
+Copyright (c) 2025 The University of Tsukuba
+-----
 HISTORY:
-Date 	By 	Comments
-------------------------------------------------
+Date      	By	Comments
+----------	---	---------------------------------------------------------
+"""
 
-'''
-
-
-import shutil, logging
+import logging
 from pathlib import Path
 
-import torch  
-import torch.nn as nn 
-import torch.nn.functional as F 
-from torchvision.io import write_png
-from torchvision.utils import flow_to_image
+import torch
 
-from yolov8 import MultiPreprocess
-from torchvision.models.optical_flow import Raft_Large_Weights, raft_large, raft_small
+from prepare_dataset.optical_flow import OpticalFlow
+from prepare_dataset.yolov11_bbox import YOLOv11Bbox
+from prepare_dataset.yolov11_pose import YOLOv11Pose
+from prepare_dataset.yolov11_mask import YOLOv11Mask
 
-class OpticalFlow(nn.Module):
-    def __init__(self, param):
-        super().__init__()
+logger = logging.getLogger(__name__)
 
-        self.weights = Raft_Large_Weights.DEFAULT
-        self.transforms = self.weights.transforms()
-        
-        self.device = param.YOLO.device
-        #define the network 
-        self.model = raft_large(weights=self.weights, progress=False).to(self.device)
-        
-    def get_Optical_flow(self, frame_batch):
-        '''
-        catch one by one batch optical flow, use RAFT method.
 
-        Args:
-            frame_batch (tensor): one batch frame, (c, f, h, w)
-
-        Returns:
-            tensor: one batch pred optical flow 
-        '''
-
-        c, f, h, w = frame_batch.shape
-
-        frame_batch = frame_batch.permute(1, 0, 2, 3).to(self.device) # c, f, h, w to f, c, h, w
-
-        current_frame = frame_batch[:-1, :, :, :] # 0~-1 frame
-        next_frame = frame_batch[1:, :, :, :] # 1~last frame
-
-        # transforms
-        current_frame_batch, next_frame_batch = self.transforms(current_frame, next_frame)
-
-        # start predict 
-        self.model.eval()
-        pred_flows = []
-
-        interval = 30 # the interval for the OF model predict, because the model is too large.
-
-        with torch.no_grad():
-            for i in range(0, f, interval):
-                temp_pred_flows = self.model(current_frame_batch[i:i+interval], next_frame_batch[i:i+interval])[-1]
-                pred_flows.append(temp_pred_flows)
-
-        # empty cache
-        torch.cuda.empty_cache()
-
-        return torch.cat(pred_flows, dim=0) # f, c, h, w
-    
-    def process_batch(self, batch):
-        '''
-        predict one batch optical flow.
-
-        Args:
-            batch (nn.Tensor): batches of videos. (b, c, f, h, w)
-
-        Returns:
-            nn.Tensor: stacked predict optical flow, (b, 2, f, h, w)
-        '''        
-        
-        b, c, f, h, w = batch.shape
-
-        pred_optical_flow_list = []
-
-        for batch_index in range(b):
-            one_batch_pred_flow = self.get_Optical_flow(batch[batch_index]) # f, c, h, w
-            pred_optical_flow_list.append(one_batch_pred_flow) 
-    
-        return torch.stack(pred_optical_flow_list).permute(0, 2, 1, 3, 4) # b, c, f, h, w
-    
-
-class Preprocess(nn.Module):
-
+class Preprocess:
     def __init__(self, config) -> None:
         super(Preprocess, self).__init__()
 
-        self.yolo_model = MultiPreprocess(config.YOLO)
+        self.config = config
+        self.task = config.task
+        logger.info(f"Preprocess task: {self.task}")
 
-        # ! notice: the OF method have err, the reason do not know.
-        if config.method == 'OF':
-            self.of_model = OpticalFlow(config)
-        else:
-            self.of_model = None
-    
-    def save_img(self, batch:torch.tensor, flag:str, epoch_idx:int):
+        # 模块初始化
+        self.yolo_model_bbox = self._init_task("bbox", YOLOv11Bbox)
+        self.yolo_model_pose = self._init_task("pose", YOLOv11Pose)
+        self.yolo_model_mask = self._init_task("mask", YOLOv11Mask)
+        self.of_model = self._init_task("optical_flow", OpticalFlow)
+
+    def _init_task(self, task_name: str, cls):
+        return cls(self.config) if task_name in self.task else None
+
+    def _empty_tensor(self, shape: tuple, dtype=torch.float32):
         """
-        save_img save batch to png, for analysis.
+        Create an empty tensor with the given shape and dtype.
+        """
+        return torch.empty(shape, dtype=dtype)
 
-        Args:
-            batch (torch.tensor): the batch of imgs (b, c, t, h, w)
-            flag (str): flag for filename, ['optical_flow', 'mask']
-            batch_idx (int): epoch index.
-        """        
-        
-        pref_Path = Path('/workspace/skeleton/logs/img_test')
-        # only rmtree in 1 epoch, and in one flag (mask).
-        if pref_Path.exists() and epoch_idx == 0 and flag == 'mask':
-            shutil.rmtree(pref_Path)
-            pref_Path.mkdir(parents=True)
-            
-        b, c, t, h, w = batch.shape
-
-        for b_idx in range(b):
-            for frame in range(t):
-                
-                if flag == 'optical_flow':
-                    inp = flow_to_image(batch[b_idx, :, frame, ...])
-                else:
-                    inp = batch[b_idx, :, frame, ...] * 255
-                    inp = inp.to(torch.uint8)
-                    
-                write_png(input=inp.cpu(), filename= str(pref_Path.joinpath(f'{flag}_{epoch_idx}_{b_idx}_{frame}.png')))
-        
-        logging.info('='*20)
-        logging.info('finish save %s' % flag)
-
-    def shape_check(self, check: list):
+    def shape_check(self, check_dict: dict[str, torch.Tensor]):
         """
         shape_check check the given value shape, and assert the shape.
 
         check list include:
-        # batch, (b, c, t, h, w)
-        # label, (b)
-        # bbox, (b, t, 4) (cxcywh)
-        # mask, (b, 1, t, h, w)
-        # keypoint, (b, t, 17, 2)
-        # optical_flow, (b, 2, t, h, w)
+        # batch, (t, h, w, c)
+        # bbox, (t, 4) (cxcywh)
+        # mask, (1, t, h, w)
+        # keypoint, (t, 17, 2)
+        # optical_flow, (2, t, h, w)
 
         Args:
             check (list): checked value, in list.
-        """        
+        """
 
-        # first value in list is video, use this as reference.
-        b, c, t, h, w = check[0].shape
+        t, h, w, c = check_dict["video"].shape
 
-        # frame check, we just need start from 1.
-        for ck in check[0:]:
+        for key, ck in check_dict.items():
+
+            if ck is None or key == "video":
+                continue
+
+            elif key == "optical_flow":
+                # optical flow shape check
+                assert ck.shape == (0, 2, h, w) or ck.shape == (t, 2, h, w), (
+                    f"Optical flow shape mismatch: {ck.shape} != {(0, 2, h, w)} or {(t, 2, h, w)}"
+                )
+            elif key == "bbox":
+                # bbox shape check
+                assert ck.shape == (0, 4) or ck.shape == (t, 4), (
+                    f"Bounding box shape mismatch: {ck.shape} != {(0, 4)} or {(t, 4)}"
+                )
+            elif key == "mask":
+                # mask shape check
+                assert ck.shape == (0, 1, h, w) or ck.shape == (t, 1, h, w), (
+                    f"Mask shape mismatch: {ck.shape} != {(0, 1, h, w)} or {(t, 1, h, w)}"
+                )
+            elif key == "pose":
+                # pose shape check
+                assert ck.shape == (0, 17, 2) or ck.shape == (t, 17, 2), (
+                    f"Pose shape mismatch: {ck.shape} != {(0, 17, 2)} or {(t, 17, 2)}"
+                )
+            elif key == "pose_score":
+                # pose score shape check
+                assert ck.shape == (0, 17) or ck.shape == (t, 17), (
+                    f"Pose score shape mismatch: {ck.shape} != {(0, 17)} or {(t, 17)}"
+                )
+            else:
+                raise ValueError(f"Unknown key in check_dict: {key}")
             
-            if ck is None: continue
-            # for label shape
-            if len(ck.shape) == 1: assert ck.shape[0] == b 
-            # for bbox shape
-            elif len(ck.shape) == 3: assert ck.shape[0] == b and ck.shape[1] == t
-            # for mask shape and optical flow shape
-            elif len(ck.shape) == 5: assert ck.shape[0] == b and (ck.shape[2] == t or ck.shape[2] == t-1)
-            # for keypoint shape
-            elif len(ck.shape) == 4: assert ck.shape[0] == b and ck.shape[1] == t and ck.shape[2] == 17
-            else: raise ValueError('shape not match')
+    def __call__(self, vframes: torch.Tensor, video_path: Path):
 
-    def forward(self, batch: torch.tensor, labels: list, batch_idx: int):
-        """
-        forward preprocess method for one batch.
+        # change the video_path to video name
+        # TODO: change the disease
+        if "LCS" in video_path.stem or "HipOA" in video_path.stem:
+            video_path = Path(str(video_path).replace("ASD_not", "LCS_HipOA"))
+        elif "DHS" in video_path.stem:
+            video_path = Path(str(video_path).replace("ASD_not", "DHS"))
 
-        Args:
-            batch (torch.tensor): batch imgs, (b, c, t, h, w)
-            labels (torch.tensor): batch labels, (b) # not use.
-            batch_idx (int): epoch index.
+        T, H, W, C = vframes.shape
 
-        Returns:
-            list: list for different moddailty, return video, bbox_non_index, labels, bbox, mask, pose
-        """
-                
-        b, c, t, h, w = batch.shape
+        # * process optical flow
+        if self.of_model:
+            optical_flow = self.of_model(vframes, video_path)
+        else:
+            optical_flow = self._empty_tensor((0, 2, H, W), dtype=torch.float32)
 
-        # process mask, pose
-        video, bbox_none_index, labels, bbox, mask, pose, pose_score = self.yolo_model(batch, labels)
+        # * process bbox
+        if self.yolo_model_bbox:
+            # use MultiPreprocess to process bbox, mask, pose
+            bbox, bbox_none_index, bbox_results = self.yolo_model_bbox(
+                vframes, video_path
+            )
+        else:
+            bbox_none_index = []
+            bbox = self._empty_tensor((0, 4), dtype=torch.float32)
 
-        # FIXME: OF method have some problem, the reason do not know.
-        # when not use OF, return None value.
-        if self.of_model is not None:
-            optical_flow = self.of_model.process_batch(batch)
-        else: 
-            optical_flow = None
+        # * process pose
+        if self.yolo_model_pose:
+            pose, pose_score, pose_none_index, pose_results = self.yolo_model_pose(
+                vframes, video_path
+            )
+        else:
+            pose = self._empty_tensor((0, 17, 3), dtype=torch.float32)
+            pose_score = self._empty_tensor((0, 17), dtype=torch.float32)
 
-        # shape check
-        self.shape_check([video, labels, mask, bbox, pose, optical_flow])
-        
-        return video, bbox_none_index, labels, optical_flow, bbox, mask, pose, pose_score
+        # * process mask
+        if self.yolo_model_mask:
+            mask, mask_none_index, mask_results = self.yolo_model_mask(
+                vframes, video_path
+            )
+        else:
+            mask = self._empty_tensor((0, 1, H, W), dtype=torch.float32)
+
+        # * shape check
+        self.shape_check(
+            {
+                "video": vframes,
+                "optical_flow": optical_flow,
+                "bbox": bbox,
+                "mask": mask,
+                "pose": pose,
+                "pose_score": pose_score,
+            }
+        )
+
+        return bbox_none_index, optical_flow, bbox, mask, pose, pose_score
