@@ -16,13 +16,10 @@ optimizer:
   beta2: 0.999
 
 data:
-  root_path: /workspace/data/pose_attn_map_dataset # this is the root path of dataset.
+  root_path: /workspace/data/multi_cue_dataset # this is the root path of dataset.
 
-  data_info_path: ${data.root_path}/json_mix # defined gait cycle json path. This path uesd be gait cycle defined dataset.
-  skeleton_path: ${data.root_path}/seg_skeleton_pkl # skeleton path, this used for cross validation, with different class number.
-  doctor_results_path: ${data.root_path}/doctor_result # doctor results path, this used for cross validation, with different class number.
-
-  index_mapping: ${data.root_path}/index_mapping_old # training mapping path, this used for cross validation, with different class number.
+  data_info_path: ${data.root_path}/pt_gz # defined gait cycle json path. This path uesd be gait cycle defined dataset.
+  index_mapping: ${data.root_path}/index_mapping # training mapping path, this used for cross validation, with different class number.
 
   num_workers: 0
   img_size: 224
@@ -31,7 +28,7 @@ data:
   batch_size: 1 # this used for default method, without gait cycle defined method.
 
 model:
-  backbone: 3dcnnatn # choices=[3dcnn, 2dcnn, cnn_lstm, two_stream, 3dcnn_atn], help='the backbone of the model'
+  backbone: 3dcnn # choices=[3dcnn, 2dcnn, cnn_lstm, two_stream, 3dcnn_atn], help='the backbone of the model'
   model_class_num: 3 # the class num of model. 2 > [ASD, non_ASD]. 3 > [ASD, DHS, LCS_HipOA]. 4 > [ASD, DHS, LCS_HipOA, normal]
   model_depth: 50 # choices=[50, 101, 152], help='the depth of used model'
 

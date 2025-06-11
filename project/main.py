@@ -1,60 +1,82 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
 """
-File: main.py
-Project: project
-Created Date: 2023-08-01 10:17:50
-Author: chenkaixu
+File: /workspace/code/project/main.py
+Project: /workspace/code/project
+Created Date: Tuesday April 22nd 2025
+Author: Kaixu Chen
 -----
-this project were based the pytorch, pytorch lightning and pytorch video library, 
-for rapid development.
+Comment:
+
+Have a good code time :)
 -----
-Last Modified: 2023-08-29 17:03:58
-Modified By: chenkaixu
+Last Modified: Thursday May 1st 2025 8:34:05 pm
+Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
+-----
+Copyright (c) 2025 The University of Tsukuba
 -----
 HISTORY:
-Date 	By 	Comments
-------------------------------------------------
-2023-08-15	KX.C	make the file.
-
+Date      	By	Comments
+----------	---	---------------------------------------------------------
 """
-# %%
-import os, time, warnings, sys, logging, multiprocessing
 
-warnings.filterwarnings("ignore")
+import os
+import logging
+import hydra
+from omegaconf import DictConfig
 
 from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning import loggers as pl_loggers
-
-# callbacks
+from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import (
     TQDMProgressBar,
     RichModelSummary,
     ModelCheckpoint,
     EarlyStopping,
+    LearningRateMonitor,
 )
-from pl_bolts.callbacks import PrintTableMetricsCallback, TrainingDataMonitor
 
-from dataloader.data_loader import WalkDataModule
-from train import MultiCueLightningModule
-from dataloader import WalkDataModule
+from project.dataloader.data_loader import WalkDataModule
 
-import pytorch_lightning
-import hydra
+#####################################
+# select different experiment trainer
+#####################################
+
+from project.trainer.train_3dcnn import Res3DCNNTrainer
+from project.trainer.train_3dcnn_atn import Res3DCNNATNTrainer
+
+from project.cross_validation import DefineCrossValidation
+
+logger = logging.getLogger(__name__)
 
 
-# %%
-def train(hparams, fold: int):
-    # set seed
+def train(hparams: DictConfig, dataset_idx, fold: int):
+    """the train process for the one fold.
+
+    Args:
+        hparams (hydra): the hyperparameters.
+        dataset_idx (int): the dataset index for the one fold.
+        fold (int): the fold index.
+
+    Returns:
+        list: best trained model, data loader
+    """
+
     seed_everything(42, workers=True)
 
-    # instance the dataset
-    data_module = WalkDataModule(hparams)
+    # * select experiment
+    if hparams.model.backbone == "3dcnn":
+        classification_module = Res3DCNNTrainer(hparams)
+    elif hparams.model.backbone == "3dcnnatn":
+        classification_module = Res3DCNNATNTrainer(hparams)
+    else:
+        raise ValueError("the experiment backbone is not supported.")
 
-    # instance the model
-    classification_module = MultiCueLightningModule(hparams)
+    data_module = WalkDataModule(hparams, dataset_idx)
 
     # for the tensorboard
-    tb_logger = pl_loggers.TensorBoardLogger(
-        save_dir=os.path.join(hparams.train.log_path), version=fold
+    tb_logger = TensorBoardLogger(
+        save_dir=os.path.join(hparams.train.log_path),
+        name=str(fold),  # here should be str type.
     )
 
     # some callbacks
@@ -63,127 +85,91 @@ def train(hparams, fold: int):
 
     # define the checkpoint becavier.
     model_check_point = ModelCheckpoint(
-        filename="{epoch}-{val_loss:.2f}-{val_video_acc:.4f}-{val_of_acc:.4f}-{val_mask_acc:.4f}",
-        auto_insert_metric_name=True,
-        monitor="val_loss",
-        mode="min",
+        filename="{epoch}-{val/loss:.2f}-{val/video_acc:.4f}",
+        auto_insert_metric_name=False,
+        monitor="val/video_acc",
+        mode="max",
         save_last=False,
         save_top_k=2,
     )
 
     # define the early stop.
     early_stopping = EarlyStopping(
-        monitor="val_loss",
+        monitor="val/video_acc",
         patience=5,
-        mode="min",
+        mode="max",
     )
 
-    # bolts callbacks
-    table_metrics_callback = PrintTableMetricsCallback()
-    monitor = TrainingDataMonitor(log_every_n_steps=50)
+    lr_monitor = LearningRateMonitor(logging_interval="step")
 
     trainer = Trainer(
         devices=[
-            hparams.train.gpu_num,
+            int(hparams.train.gpu),
         ],
         accelerator="gpu",
         max_epochs=hparams.train.max_epochs,
-        logger=tb_logger,
-        #   log_every_n_steps=100,
+        logger=tb_logger,  # wandb_logger,
         check_val_every_n_epoch=1,
         callbacks=[
             progress_bar,
             rich_model_summary,
-            table_metrics_callback,
-            monitor,
             model_check_point,
             early_stopping,
+            lr_monitor,
         ],
-        #   deterministic=True
+        # fast_dev_run=hparams.train.fast_dev_run,  # if use fast dev run for debug.
+        # limit_train_batches=2,
+        # limit_val_batches=2,
+        # limit_test_batches=2,
     )
 
-    # training and val
     trainer.fit(classification_module, data_module)
 
-    Acc_list = trainer.validate(classification_module, data_module, ckpt_path="best")
-
-    # return the best acc score.
-    # return model_check_point.best_model_score.item()
+    # save the metrics to file
+    trainer.test(
+        classification_module,
+        data_module,
+        ckpt_path="best",
+    )
 
 
 @hydra.main(
     version_base=None,
-    config_path="/workspace/Multi_Cue_Video_PyTorch/configs",
+    config_path="../configs",  # * the config_path is relative to location of the python script
     config_name="config.yaml",
 )
-def init_params(
-    config,
-):
-    #############
-    # K Fold CV
-    #############
-    DATE = str(time.localtime().tm_mon) + str(time.localtime().tm_mday)
-    DATA_PATH = config.data.data_path
+def init_params(config):
+    #######################
+    # prepare dataset index
+    #######################
 
-    # set the version
-    uniform_temporal_subsample_num = config.train.uniform_temporal_subsample_num
-    clip_duration = config.train.clip_duration
-    config.train.version = "_".join(
-        [DATE, str(clip_duration), str(uniform_temporal_subsample_num)]
-    )
+    fold_dataset_idx = DefineCrossValidation(config)()
 
-    # output log to file
-    log_path = (
-        "/workspace/Multi_Cue_Video_PyTorch/logs/"
-        + "_".join([config.train.version, config.model.model])
-        + ".log"
-    )
-    sys.stdout = open(log_path, "w")
+    logger.info("#" * 50)
+    logger.info("Start train all fold")
+    logger.info("#" * 50)
 
-    # get the fold number
-    fold_num = os.listdir(DATA_PATH)
-    fold_num.sort()
-    if "raw" in fold_num:
-        fold_num.remove("raw")
+    #########
+    # K fold
+    #########
+    # * for one fold, we first train/val model, then save the best ckpt preds/label into .pt file.
 
-    store_Acc_Dict = {}
-    sum_list = []
+    for fold, dataset_value in fold_dataset_idx.items():
+        logger.info("#" * 50)
+        logger.info(f"Start train fold: {fold}")
+        logger.info("#" * 50)
 
-    for fold in fold_num:
-        #################
-        # start k Fold CV
-        #################
+        train(config, dataset_value, fold)
 
-        logging.info("#" * 50)
-        logging.info("Start %s" % fold)
-        logging.info("#" * 50)
-
-        config.train.train_path = os.path.join(DATA_PATH, fold)
-
-        Acc_score = train(config, fold)
-
-        store_Acc_Dict[fold] = Acc_score
-        sum_list.append(Acc_score)
+        logger.info("#" * 50)
+        logger.info(f"finish train fold: {fold}")
+        logger.info("#" * 50)
 
     logging.info("#" * 50)
-    logging.info("different fold Acc:")
-    logging.info(store_Acc_Dict)
-    logging.info("Final avg Acc is: %s" % (sum(sum_list) / len(sum_list)))
+    logging.info("finish train all fold")
+    logging.info("#" * 50)
 
 
-# %%
 if __name__ == "__main__":
-    # # define process
-    # ASD_process = multiprocessing.Process(target=main, args=(parames, 'ASD'))
-    # DHS_process = multiprocessing.Process(target=main, args=(parames, 'DHS'))
-    # LCS_process = multiprocessing.Process(target=main, args=(parames, 'LCS'))
-    # HipOA_process = multiprocessing.Process(target=main, args=(parames, 'HipOA'))
-
-    # # start process
-    # ASD_process.start()
-    # DHS_process.start()
-    # LCS_process.start()
-    # HipOA_process.start()
-
     os.environ["HYDRA_FULL_ERROR"] = "1"
     init_params()
