@@ -114,9 +114,12 @@ class LabeledGaitVideoDataset(torch.utils.data.Dataset):
             "mask": transformed_mask,
         }
 
-        # TODO: visualize the sampe image 
-        # save_sample(transformed_vframes, "sample", prefix="frame")
-        
+        # visualize the sample image 
+        save_sample(transformed_vframes, "vis/frames", prefix="frame")
+        save_sample(transformed_optical_flow, "vis/optical_flow", prefix="flow")
+        save_sample(transformed_keypoints_heatmap, "vis/keypoints_heatmap", prefix="kpt_heatmap")
+        save_sample(transformed_mask, "vis/mask", prefix="mask")
+
         return sample_info_dict
 
 
@@ -124,7 +127,6 @@ def whole_video_dataset(
     experiment: str,
     transform: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
     dataset_idx: list = [],
-    clip_duration: int = 1,
 ) -> LabeledGaitVideoDataset:
     dataset = LabeledGaitVideoDataset(
         experiment=experiment,

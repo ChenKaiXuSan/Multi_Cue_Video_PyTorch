@@ -1,29 +1,24 @@
-"""
-File: train.py
-Project: project
-Created Date: 2023-10-19 02:29:47
-Author: chenkaixu
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+'''
+File: /workspace/code/project/trainer/train_3dcnn copy.py
+Project: /workspace/code/project/trainer
+Created Date: Wednesday June 18th 2025
+Author: Kaixu Chen
 -----
 Comment:
- This file is the train/val/test process for the project.
 
-
-Have a good code time!
+Have a good code time :)
 -----
-Last Modified: Thursday May 1st 2025 8:34:05 pm
+Last Modified: Wednesday June 18th 2025 3:02:23 pm
 Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
 -----
+Copyright (c) 2025 The University of Tsukuba
+-----
 HISTORY:
-Date 	By 	Comments
-------------------------------------------------
-
-08-05-2025	Kaixu Chen	split the model into individual file, and add the resnet model.
-
-22-03-2024	Kaixu Chen	add different class number mapping, now the class number is a hyperparameter.
-
-14-12-2023	Kaixu Chen refactor the code, now it a simple code to train video frame from dataloader.
-
-"""
+Date      	By	Comments
+----------	---	---------------------------------------------------------
+'''
 
 from typing import Any, List, Optional, Union
 import logging
@@ -47,7 +42,7 @@ from project.helper import save_helper
 logger = logging.getLogger(__name__)
 
 
-class Res3DCNNTrainer(LightningModule):
+class MultiModalVitTrainer(LightningModule):
     def __init__(self, hparams):
         super().__init__()
 
@@ -123,11 +118,9 @@ class Res3DCNNTrainer(LightningModule):
 
     def validation_step(self, batch: dict[str, torch.Tensor], batch_idx: int):
         # input and model define
+        video = batch["video"].detach()  # b, c, t, h, w
+        attn_map = batch["attn_map"].detach()  # b, c, t, h, w
         label = batch["label"].detach().float()  # b
-        rgb = batch["rgb"].detach()  # b, c, t, h, w
-        flow = batch["flow"].detach()  # b, c, t, h, w
-        lpt_heatmap = batch["kpt_heatmap"].detach()  # b, c, t, h, w
-        mask = batch["mask"].detach()  # b, c, t, h, w
 
         b, c, t, h, w = video.shape
 

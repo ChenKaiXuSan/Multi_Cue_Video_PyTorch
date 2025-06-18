@@ -30,6 +30,9 @@ import os
 
 from torchvision.transforms.v2 import functional as F, Transform
 
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.cm import get_cmap
 
 class UniformTemporalSubsample(Transform):
     """Uniformly subsample ``num_samples`` indices from the temporal dimension of the video.
@@ -123,26 +126,41 @@ def kpt_to_heatmap(keypoints, H, W, sigma=2):
 
     return heatmap  # [B, 1, H, W]
 
-
-def save_sample(img: torch.Tensor, path: str, prefix="frame") -> None:
+def save_sample(tensor: torch.Tensor, out_dir: str, prefix="sample", cmap_name=None, normalize=True):
     """
-    Save a tensor video (B, C, T, H, W) or image (C, H, W) to images.
+    Save a [B, C, T, H, W] tensor as image sequences.
 
     Args:
-        img (torch.Tensor): Tensor of shape [B, C, T, H, W] or [C, T, H, W]
-        path (str): Directory to save the frames.
-        prefix (str): Filename prefix.
+        tensor: torch.Tensor of shape [B, C, T, H, W]
+        out_dir: Directory to save the image sequence
+        prefix: Filename prefix
+        cmap_name: Optional colormap for single-channel (e.g. 'jet')
+        normalize: Whether to scale to [0, 1]
     """
-    os.makedirs(path, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+    
+    b, c, t, h, w = tensor.shape
+    tensor = tensor[0]  # only visualize first sample
 
-    if img.dim() == 5:  # [B, C, T, H, W]
-        img = img[0]  # take first batch
-    if img.dim() == 4:  # [C, T, H, W]
-        c, t, h, w = img.shape
-        for i in range(t):
-            frame = img[:, i, :, :]  # [C, H, W]
-            frame = frame.permute(1, 2, 0)  # [H, W, C]
-            frame_np = (frame * 255).clamp(0, 255).byte().cpu().numpy()
-            Image.fromarray(frame_np).save(os.path.join(path, f"{prefix}_{i:03d}.png"))
-    else:
-        raise ValueError("Expected input of shape [B, C, T, H, W] or [C, T, H, W]")
+    for ti in range(t):
+        img = tensor[:, ti, :, :]  # [C, H, W]
+
+        if c == 3:  # RGB
+            img_np = img.permute(1, 2, 0).cpu().clamp(0, 1).numpy()
+        elif c == 2:  # optical flow, use magnitude or flow-to-color
+            flow_np = img.cpu().numpy()
+            magnitude = np.linalg.norm(flow_np, axis=0)
+            if normalize:
+                magnitude = (magnitude - magnitude.min()) / (magnitude.ptp() + 1e-5)
+            img_np = plt.get_cmap("viridis")(magnitude)[:, :, :3]  # RGB heatmap
+        elif c == 1:  # mask or heatmap
+            img_2d = img[0].cpu().numpy()
+            if normalize:
+                img_2d = (img_2d - img_2d.min()) / (img_2d.ptp() + 1e-5)
+            cmap = get_cmap(cmap_name or "jet")
+            img_np = cmap(img_2d)[:, :, :3]  # RGBA → RGB
+        else:
+            raise ValueError(f"Unsupported channel size: {c}")
+
+        img_uint8 = (img_np * 255).astype(np.uint8)
+        Image.fromarray(img_uint8).save(os.path.join(out_dir, f"{prefix}_{ti:03d}.png"))

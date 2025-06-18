@@ -43,6 +43,7 @@ from project.dataloader.data_loader import WalkDataModule
 
 from project.trainer.train_3dcnn import Res3DCNNTrainer
 from project.trainer.train_3dcnn_atn import Res3DCNNATNTrainer
+from project.trainer.train_multimodal_vit import MultiModalVitTrainer
 
 from project.cross_validation import DefineCrossValidation
 
