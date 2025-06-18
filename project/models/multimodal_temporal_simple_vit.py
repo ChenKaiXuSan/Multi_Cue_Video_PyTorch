@@ -7,6 +7,8 @@ Created Date: Wednesday June 18th 2025
 Author: Kaixu Chen
 -----
 Comment:
+Reference from:
+https://github.com/lucidrains/vit-pytorch/blob/main/vit_pytorch/simple_vit.py
 
 Have a good code time :)
 -----
