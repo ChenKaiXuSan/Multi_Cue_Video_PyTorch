@@ -12,5 +12,23 @@
         // "model.fuse_method=add"
       ]
     },
+    {
+      "name": "3dcnn",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "project.main",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [
+        "model.backbone=3dcnn",
+        "model.model_class_num=3",
+        "train.gpu=1",
+        "train.clip_duration=1",
+        "train.uniform_temporal_subsample_num=8",
+        "data.num_workers=0",
+        "model.fuse_method=add"
+      ]
+    },
   ]
 }
