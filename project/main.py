@@ -41,9 +41,9 @@ from project.dataloader.data_loader import WalkDataModule
 # select different experiment trainer
 #####################################
 
-from project.trainer.train_3dcnn import Res3DCNNTrainer
-from project.trainer.train_3dcnn_atn import Res3DCNNATNTrainer
-from project.trainer.train_multimodal_vit import MultiModalVitTrainer
+# from project.trainer.train_3dcnn import Res3DCNNTrainer
+# from project.trainer.train_3dcnn_atn import Res3DCNNATNTrainer
+from project.trainer.train_vit import MultiModalVitTrainer
 
 from project.cross_validation import DefineCrossValidation
 
@@ -65,10 +65,8 @@ def train(hparams: DictConfig, dataset_idx, fold: int):
     seed_everything(42, workers=True)
 
     # * select experiment
-    if hparams.model.backbone == "3dcnn":
-        classification_module = Res3DCNNTrainer(hparams)
-    elif hparams.model.backbone == "3dcnnatn":
-        classification_module = Res3DCNNATNTrainer(hparams)
+    if hparams.model.backbone == "vit":
+        classification_module = MultiModalVitTrainer(hparams)
     else:
         raise ValueError("the experiment backbone is not supported.")
 

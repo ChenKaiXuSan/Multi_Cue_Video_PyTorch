@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
-'''
+"""
 File: /workspace/code/project/trainer/train_3dcnn copy.py
 Project: /workspace/code/project/trainer
 Created Date: Wednesday June 18th 2025
@@ -10,7 +10,7 @@ Comment:
 
 Have a good code time :)
 -----
-Last Modified: Wednesday June 18th 2025 3:02:23 pm
+Last Modified: Wednesday June 18th 2025 6:08:34 pm
 Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
 -----
 Copyright (c) 2025 The University of Tsukuba
@@ -18,7 +18,7 @@ Copyright (c) 2025 The University of Tsukuba
 HISTORY:
 Date      	By	Comments
 ----------	---	---------------------------------------------------------
-'''
+"""
 
 from typing import Any, List, Optional, Union
 import logging
@@ -36,7 +36,7 @@ from torchmetrics.classification import (
     MulticlassConfusionMatrix,
 )
 
-from project.models.res_3dcnn import Res3DCNN
+from project.models.make_model import select_model
 from project.helper import save_helper
 
 logger = logging.getLogger(__name__)
@@ -52,8 +52,8 @@ class MultiModalVitTrainer(LightningModule):
         self.num_classes = hparams.model.model_class_num
 
         # define model
-        # self.video_cnn = MakeVideoModule(hparams)()
-        self.video_cnn = Res3DCNN(hparams)
+        self.modal_type = hparams.train.modal_type
+        self.model = select_model(hparams)
 
         # save the hyperparameters to the file and ckpt
         self.save_hyperparameters()
@@ -65,30 +65,35 @@ class MultiModalVitTrainer(LightningModule):
         self._confusion_matrix = MulticlassConfusionMatrix(num_classes=self.num_classes)
 
     def forward(self, x):
-        return self.video_cnn(x)
+        return self.model(x)
 
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int):
-        # prepare the input and label
-        video = batch["video"].detach()  # b, c, t, h, w
-        attn_map = batch["attn_map"].detach()  # b, c, t, h, w
+        # input and model define
+
         label = batch["label"].detach().float()  # b
-        # sample_info = batch["info"] # b is the video instance number
+        b, c, t, h, w = batch["rgb"].shape
 
-        b, c, t, h, w = video.shape
+        inputs = {}
 
-        if b > 20:
-            video = video[:20, :, :, :, :]
-            attn_map = attn_map[:20, :, :, :, :]
-            label = label[:20]
+        if self.modal_type == "all":
+            inputs["rgb"] = batch["rgb"].detach()  # b, c, t, h, w
+            inputs["flow"] = batch["flow"].detach()  # b, c, t, h, w
+            inputs["mask"] = batch["mask"].detach()  # b, c, t, h, w
+            inputs["kpt"] = batch["kpt_heatmap"].detach()  # b, c, t, h, w
+        elif self.modal_type == "rgb":
+            inputs["rgb"] = batch["rgb"].detach()  # b, c, t, h, w
+        elif self.modal_type == "flow":
+            inputs["flow"] = batch["flow"].detach()  # b, c, t, h, w
+        elif self.modal_type == "mask":
+            inputs["mask"] = batch["mask"].detach()  # b, c, t, h, w
+        elif self.modal_type == "kpt":
+            inputs["kpt"] = batch["kpt_heatmap"].detach()  # b, c, t, h, w
+        else:
+            raise ValueError(f"the modal type {self.modal_type} is not supported.")
 
-        video_preds = self.video_cnn(video, attn_map)
+        video_preds = self.model(inputs)  # b, num_classes
+
         video_preds_softmax = torch.softmax(video_preds, dim=1)
-
-        # check shape
-        # if b == 1:
-        #     label = label.unsqueeze(0)
-
-        assert label.shape[0] == video_preds.shape[0]
 
         loss = F.cross_entropy(video_preds, label.long())
 
@@ -118,20 +123,31 @@ class MultiModalVitTrainer(LightningModule):
 
     def validation_step(self, batch: dict[str, torch.Tensor], batch_idx: int):
         # input and model define
-        video = batch["video"].detach()  # b, c, t, h, w
-        attn_map = batch["attn_map"].detach()  # b, c, t, h, w
+
         label = batch["label"].detach().float()  # b
+        b, c, t, h, w = batch["rgb"].shape
 
-        b, c, t, h, w = video.shape
+        inputs = {}
 
-        video_preds = self.video_cnn(video, attn_map)
+        if self.modal_type == "all":
+            inputs["rgb"] = batch["rgb"].detach()  # b, c, t, h, w
+            inputs["flow"] = batch["flow"].detach()  # b, c, t, h, w
+            inputs["mask"] = batch["mask"].detach()  # b, c, t, h, w
+            inputs["kpt"] = batch["kpt_heatmap"].detach()  # b, c, t, h, w
+        elif self.modal_type == "rgb":
+            inputs["rgb"] = batch["rgb"].detach()  # b, c, t, h, w
+        elif self.modal_type == "flow":
+            inputs["flow"] = batch["flow"].detach()  # b, c, t, h, w
+        elif self.modal_type == "mask":
+            inputs["mask"] = batch["mask"].detach()  # b, c, t, h, w
+        elif self.modal_type == "kpt":
+            inputs["kpt"] = batch["kpt_heatmap"].detach()  # b, c, t, h, w
+        else:
+            raise ValueError(f"the modal type {self.modal_type} is not supported.")
+
+        video_preds = self.model(inputs)  # b, num_classes
+
         video_preds_softmax = torch.softmax(video_preds, dim=1)
-
-        # if b == 1:
-        #     label = label.unsqueeze(0)
-
-        # check shape
-        assert label.shape[0] == b
 
         loss = F.cross_entropy(video_preds, label.long())
 
@@ -178,20 +194,30 @@ class MultiModalVitTrainer(LightningModule):
 
     def test_step(self, batch: dict[str, torch.Tensor], batch_idx: int):
         # input and model define
-        video = batch["video"].detach()  # b, c, t, h, w
-        attn_map = batch["attn_map"].detach()  # b, c, t, h, w
+
         label = batch["label"].detach().float()  # b
+        b, c, t, h, w = batch["rgb"].shape
 
-        b, c, t, h, w = video.shape
+        inputs = {}
 
-        video_preds = self.video_cnn(video, attn_map)
+        if self.modal_type == "all":
+            inputs["rgb"] = batch["rgb"].detach()  # b, c, t, h, w
+            inputs["flow"] = batch["flow"].detach()  # b, c, t, h, w
+            inputs["mask"] = batch["mask"].detach()  # b, c, t, h, w
+            inputs["kpt"] = batch["kpt_heatmap"].detach()  # b, c, t, h, w
+        elif self.modal_type == "rgb":
+            inputs["rgb"] = batch["rgb"].detach()  # b, c, t, h, w
+        elif self.modal_type == "flow":
+            inputs["flow"] = batch["flow"].detach()  # b, c, t, h, w
+        elif self.modal_type == "mask":
+            inputs["mask"] = batch["mask"].detach()  # b, c, t, h, w
+        elif self.modal_type == "kpt":
+            inputs["kpt"] = batch["kpt_heatmap"].detach()  # b, c, t, h, w
+        else:
+            raise ValueError(f"the modal type {self.modal_type} is not supported.")
+
+        video_preds = self.model(inputs)  # b, num_classes
         video_preds_softmax = torch.softmax(video_preds, dim=1)
-
-        # if b == 1:
-        #     label = label.unsqueeze(0)
-
-        # check shape
-        assert label.shape[0] == b
 
         loss = F.cross_entropy(video_preds, label.long())
 

@@ -76,8 +76,7 @@ class WalkDataModule(LightningDataModule):
 
         self._experiment = opt.train.experiment
         self._backbone = opt.model.backbone
-
-        self._attn_map = opt.train.attn_map
+        self._modal_type = opt.train.modal_type
 
         self.mapping_transform = Compose(
             [
@@ -137,7 +136,7 @@ class WalkDataModule(LightningDataModule):
             stage (Optional[str], optional): trainer.stage, in ('fit', 'validate', 'test', 'predict'). Defaults to None.
         """
 
-        if self._attn_map:
+        if self._modal_type == "all":
             # train dataset
             self.train_gait_dataset = whole_video_dataset(
                 experiment=self._experiment,
@@ -165,27 +164,70 @@ class WalkDataModule(LightningDataModule):
                 transform=self.mapping_transform,
             )
 
-        else:
-            # train dataset
-            self.train_gait_dataset = labeled_video_dataset(
-                data_path=self._dataset_idx[2],
-                clip_sampler=make_clip_sampler("uniform", self._clip_duration),
-                transform=self.train_video_transform,
-            )
+        # TODO: want to delete this part, but need to keep it for now.
+        # elif :
+        #     # train dataset
+        #     self.train_gait_dataset = labeled_video_dataset(
+        #         data_path=self._dataset_idx[2],
+        #         clip_sampler=make_clip_sampler("uniform", self._clip_duration),
+        #         transform=self.train_video_transform,
+        #     )
 
-            # val dataset
-            self.val_gait_dataset = labeled_video_dataset(
-                data_path=self._dataset_idx[3],
-                clip_sampler=make_clip_sampler("uniform", self._clip_duration),
-                transform=self.val_video_transform,
-            )
+        #     # val dataset
+        #     self.val_gait_dataset = labeled_video_dataset(
+        #         data_path=self._dataset_idx[3],
+        #         clip_sampler=make_clip_sampler("uniform", self._clip_duration),
+        #         transform=self.val_video_transform,
+        #     )
 
-            # test dataset
-            self.test_gait_dataset = labeled_video_dataset(
-                data_path=self._dataset_idx[3],
-                clip_sampler=make_clip_sampler("uniform", self._clip_duration),
-                transform=self.val_video_transform,
-            )
+        #     # test dataset
+        #     self.test_gait_dataset = labeled_video_dataset(
+        #         data_path=self._dataset_idx[3],
+        #         clip_sampler=make_clip_sampler("uniform", self._clip_duration),
+        #         transform=self.val_video_transform,
+        #     )
+
+    def collate_fn(self, batch):
+        """this function process the batch data, and return the batch data.
+
+        Args:
+            batch (list): the batch from the dataset.
+            The batch include the one patient info from the json file.
+            Here we only cat the one patient video tensor, and label tensor.
+
+        Returns:
+            dict: {video: torch.tensor, label: torch.tensor, info: list}
+        """
+
+        batch_label = []
+        batch_rgb = []
+        batch_flow = []
+        batch_kpt_heatmap = []
+        batch_mask = []
+
+        # * mapping label
+        for i in batch:
+
+            B, C, T, H, W = i["rgb"].shape
+
+            batch_rgb.append(i["rgb"])  # b, c, t, h, w
+            batch_flow.append(i["flow"])  # b, c, t, h, w
+            batch_kpt_heatmap.append(i["kpt_heatmap"])  # b, c, t, h, w
+            batch_mask.append(i["mask"])  # b, c
+
+            for _ in range(B):
+
+                batch_label.append(
+                    i['label']
+                )
+                
+        return {
+            "label": torch.tensor(batch_label), # b,
+            "rgb": torch.cat(batch_rgb, dim=0), # b, c, t, h, w
+            "flow": torch.cat(batch_flow, dim=0),  # b, c, t, h, w
+            "kpt_heatmap": torch.cat(batch_kpt_heatmap, dim=0),  # b, c, t, h, w
+            "mask": torch.cat(batch_mask, dim=0),  # b, c, t, h, w
+        }
 
     def train_dataloader(self) -> DataLoader:
         """
@@ -201,6 +243,7 @@ class WalkDataModule(LightningDataModule):
             pin_memory=True,
             shuffle=True,
             drop_last=True,
+            collate_fn=self.collate_fn,
         )
 
         return train_data_loader
@@ -219,6 +262,7 @@ class WalkDataModule(LightningDataModule):
             pin_memory=True,
             shuffle=False,
             drop_last=True,
+            collate_fn=self.collate_fn,
         )
 
         return val_data_loader
@@ -237,6 +281,7 @@ class WalkDataModule(LightningDataModule):
             pin_memory=True,
             shuffle=False,
             drop_last=True,
+            collate_fn=self.collate_fn,
         )
 
         return test_data_loader
