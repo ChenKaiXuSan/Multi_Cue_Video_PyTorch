@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding:utf-8 -*-
-'''
+"""
 File: /workspace/code/project/dataloader/utils.py
 Project: /workspace/code/project/dataloader
 Created Date: Wednesday April 23rd 2025
@@ -12,7 +12,7 @@ Copy from pytorchvideo.
 
 Have a good code time :)
 -----
-Last Modified: Wednesday April 23rd 2025 6:18:13 am
+Last Modified: Wednesday June 11th 2025 8:56:45 pm
 Modified By: the developer formerly known as Kaixu Chen at <chenkaixusan@gmail.com>
 -----
 Copyright (c) 2025 The University of Tsukuba
@@ -20,12 +20,14 @@ Copyright (c) 2025 The University of Tsukuba
 HISTORY:
 Date      	By	Comments
 ----------	---	---------------------------------------------------------
-'''
+"""
 
 from typing import Any, Callable, Dict, Optional
 
-
 import torch
+from PIL import Image
+import os
+
 from torchvision.transforms.v2 import functional as F, Transform
 
 
@@ -48,7 +50,7 @@ class UniformTemporalSubsample(Transform):
         self.num_samples = num_samples
 
     def _transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
-        inpt = inpt.permute(1, 0, 2, 3)  # [C, T, H, W] -> [T, C, H, W]
+        # inpt = inpt.permute(1, 0, 2, 3)  # [C, T, H, W] -> [T, C, H, W]
         return self._call_kernel(F.uniform_temporal_subsample, inpt, self.num_samples)
 
 
@@ -92,3 +94,55 @@ class Div255(torch.nn.Module):
         """
         return x / 255.0
 
+
+def kpt_to_heatmap(keypoints, H, W, sigma=2):
+    """
+    kpts: Tensor [B, K, 2] (x, y)
+    H, W: 输出热图的高宽
+    sigma: 高斯标准差（控制热图的“扩散程度”）
+    return: Tensor [B, K, H, W]
+    """
+    B, K, _ = keypoints.shape
+    device = keypoints.device
+
+    # 创建网格
+    y = torch.arange(0, H, device=device).view(1, 1, H, 1)
+    x = torch.arange(0, W, device=device).view(1, 1, 1, W)
+
+    # 提取关键点坐标
+    x_kpt = keypoints[..., 0].view(B, K, 1, 1)
+    y_kpt = keypoints[..., 1].view(B, K, 1, 1)
+
+    # 计算高斯响应
+    heatmap = torch.exp(-((x - x_kpt) ** 2 + (y - y_kpt) ** 2) / (2 * sigma**2))
+
+    # 可选归一化（最大值归一为1）
+    heatmap = heatmap / heatmap.amax(dim=(2, 3), keepdim=True).clamp(min=1e-6)
+
+    heatmap = torch.mean(heatmap, dim=1, keepdim=True)  # [B, 1, H, W]
+
+    return heatmap  # [B, 1, H, W]
+
+
+def save_sample(img: torch.Tensor, path: str, prefix="frame") -> None:
+    """
+    Save a tensor video (B, C, T, H, W) or image (C, H, W) to images.
+
+    Args:
+        img (torch.Tensor): Tensor of shape [B, C, T, H, W] or [C, T, H, W]
+        path (str): Directory to save the frames.
+        prefix (str): Filename prefix.
+    """
+    os.makedirs(path, exist_ok=True)
+
+    if img.dim() == 5:  # [B, C, T, H, W]
+        img = img[0]  # take first batch
+    if img.dim() == 4:  # [C, T, H, W]
+        c, t, h, w = img.shape
+        for i in range(t):
+            frame = img[:, i, :, :]  # [C, H, W]
+            frame = frame.permute(1, 2, 0)  # [H, W, C]
+            frame_np = (frame * 255).clamp(0, 255).byte().cpu().numpy()
+            Image.fromarray(frame_np).save(os.path.join(path, f"{prefix}_{i:03d}.png"))
+    else:
+        raise ValueError("Expected input of shape [B, C, T, H, W] or [C, T, H, W]")

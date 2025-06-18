@@ -27,15 +27,13 @@ Date      	By	Comments
 from __future__ import annotations
 
 import logging
-import json
 
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch
+import gzip
 
-from torchvision.io import read_video
-
-from project.dataloader.med_attn_map import MedAttnMap
+from project.dataloader.utils import kpt_to_heatmap, save_sample
 
 logger = logging.getLogger(__name__)
 
@@ -46,21 +44,12 @@ class LabeledGaitVideoDataset(torch.utils.data.Dataset):
         experiment: str,
         labeled_video_paths: list[Tuple[str, Optional[dict]]],
         transform: Optional[Callable[[dict], Any]] = None,
-        doctor_res_path: str = "",
-        skeleton_path: str = "",
     ) -> None:
         super().__init__()
 
         self._transform = transform
         self._labeled_videos = labeled_video_paths
-        # self._index_map = self.prepare_video_mapping_info(
-        #     labeled_video_paths=labeled_video_paths,
-        #     clip_duration=clip_duration,
-        # )
         self._experiment = experiment
-
-        if "True" in self._experiment:
-            self.attn_map = MedAttnMap(doctor_res_path, skeleton_path)
 
     def __len__(self):
         return len(self._labeled_videos)
@@ -72,10 +61,11 @@ class LabeledGaitVideoDataset(torch.utils.data.Dataset):
         batch_res = []
 
         for f in range(0, t, fps):
-            one_sec_vframes = vframes[f : f + fps, :, :, :]
+            one_sec_vframes = vframes[f : f + fps, :, :, :]  # t, c, h, w
 
             if self._transform is not None:
-                transformed_img = self._transform(one_sec_vframes.permute(1, 0, 2, 3))
+                transformed_img = self._transform(one_sec_vframes)
+                transformed_img = transformed_img.to(dtype=torch.float32)
 
                 batch_res.append(transformed_img.permute(1, 0, 2, 3))  # c, t, h, w
             else:
@@ -86,45 +76,47 @@ class LabeledGaitVideoDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index) -> dict[str, Any]:
 
-        with open(self._labeled_videos[index]) as f:
-            file_info_dict = json.load(f)
+        with gzip.open(self._labeled_videos[index], "r") as f:
+            file_info_dict = torch.load(f)
 
         # load video info from json file
-        video_name = file_info_dict["video_name"]
-        video_path = file_info_dict["video_path"]
+        video_path = file_info_dict["video"]
+        img_shape = file_info_dict["img_shape"]
+        bbox_non_index = file_info_dict["bbox_none_index"]
+        bbox = file_info_dict["bbox"]
+        keypoint_score = file_info_dict["keypoint_score"]
 
-        vframes, _, info = read_video(video_path, output_format="TCHW", pts_unit="sec")
-
+        # multi-modal data
+        frames = file_info_dict["frames"]
         label = file_info_dict["label"]
-        disease = file_info_dict["disease"]
-        # gait_cycle_index = file_info_dict["gait_cycle_index"]
-        # bbox_none_index = file_info_dict["none_index"]
-        # bbox = file_info_dict["bbox"]
+        optical_flow = file_info_dict["optical_flow"]
+        mask = file_info_dict["mask"]
+        keypoints = file_info_dict["keypoint"]
 
-        attn_map = self.attn_map(
-            video_name=video_name,
-            video_path=video_path,
-            disease=disease,
-            vframes=vframes,
+        keypoints_heatmap = kpt_to_heatmap(
+            keypoints=keypoints,
+            H=img_shape[0],
+            W=img_shape[1],
+            sigma=2,
         )
 
         # transform the video frames
-        transformed_vframes = self.move_transform(vframes, int(info["video_fps"]))
-        transformed_attn_map = self.move_transform(attn_map, int(info["video_fps"]))
+        transformed_vframes = self.move_transform(frames, 30)
+        transformed_optical_flow = self.move_transform(optical_flow, 30)
+        transformed_keypoints_heatmap = self.move_transform(keypoints_heatmap, 30)
+        transformed_mask = self.move_transform(mask, 30)
 
         sample_info_dict = {
-            "video": transformed_vframes,
             "label": label,
-            "attn_map": transformed_attn_map,
-            "disease": disease,
-            "video_name": video_name,
-            "video_index": index,
-            # "bbox_none_index": bbox_none_index,
+            "rgb": transformed_vframes,
+            "flow": transformed_optical_flow,
+            "kpt_heatmap": transformed_keypoints_heatmap,
+            "mask": transformed_mask,
         }
 
-        # logger.info(f"the video name is {video_name}")
-        # logger.info(f"the batch size is {transformed_vframes.shape}")
-
+        # TODO: visualize the sampe image 
+        # save_sample(transformed_vframes, "sample", prefix="frame")
+        
         return sample_info_dict
 
 
@@ -132,16 +124,12 @@ def whole_video_dataset(
     experiment: str,
     transform: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None,
     dataset_idx: list = [],
-    doctor_res_path: str = "",
-    skeleton_path: str = "",
     clip_duration: int = 1,
 ) -> LabeledGaitVideoDataset:
     dataset = LabeledGaitVideoDataset(
         experiment=experiment,
         transform=transform,
         labeled_video_paths=dataset_idx,
-        doctor_res_path=doctor_res_path,
-        skeleton_path=skeleton_path,
     )
 
     return dataset

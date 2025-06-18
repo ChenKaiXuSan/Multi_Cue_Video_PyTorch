@@ -72,8 +72,6 @@ class WalkDataModule(LightningDataModule):
         # TODO: fix this
         # * this is the dataset idx, which include the train/val dataset idx.
         self._dataset_idx = dataset_idx
-        self._doctor_res_path = opt.data.doctor_results_path
-        self._skeleton_path = opt.data.skeleton_path
 
         self._class_num = opt.model.model_class_num
 
@@ -141,7 +139,6 @@ class WalkDataModule(LightningDataModule):
         """
 
         if self._attn_map:
-
             # train dataset
             self.train_gait_dataset = whole_video_dataset(
                 experiment=self._experiment,
@@ -149,8 +146,6 @@ class WalkDataModule(LightningDataModule):
                     0
                 ],  # train mapped path, include gait cycle index.
                 transform=self.mapping_transform,
-                skeleton_path=self._skeleton_path,
-                doctor_res_path=self._doctor_res_path,
                 clip_duration=self._clip_duration,
             )
 
@@ -161,8 +156,6 @@ class WalkDataModule(LightningDataModule):
                     1
                 ],  # val mapped path, include gait cycle index.
                 transform=self.mapping_transform,
-                doctor_res_path=self._doctor_res_path,
-                skeleton_path=self._skeleton_path,
                 clip_duration=self._clip_duration,
             )
 
@@ -173,13 +166,10 @@ class WalkDataModule(LightningDataModule):
                     1
                 ],  # val mapped path, include gait cycle index.
                 transform=self.mapping_transform,
-                doctor_res_path=self._doctor_res_path,
-                skeleton_path=self._skeleton_path,
                 clip_duration=self._clip_duration,
             )
 
         else:
-
             # train dataset
             self.train_gait_dataset = labeled_video_dataset(
                 data_path=self._dataset_idx[2],
@@ -227,9 +217,7 @@ class WalkDataModule(LightningDataModule):
             batch_attn_map.append(i["attn_map"])
 
             for _ in range(gait_num):
-
                 if disease in disease_to_num_mapping_Dict[self._class_num].keys():
-
                     batch_label.append(
                         disease_to_num_mapping_Dict[self._class_num][disease]
                     )
@@ -264,7 +252,7 @@ class WalkDataModule(LightningDataModule):
             pin_memory=True,
             shuffle=True,
             drop_last=True,
-            collate_fn=self.collate_fn,  # FIXME: the collate_fn can be removed, because the dataset already have the collate_fn.
+            # collate_fn=self.collate_fn,  # FIXME: the collate_fn can be removed, because the dataset already have the collate_fn.
         )
 
         return train_data_loader
@@ -283,7 +271,7 @@ class WalkDataModule(LightningDataModule):
             pin_memory=True,
             shuffle=False,
             drop_last=True,
-            collate_fn=self.collate_fn,
+            # collate_fn=self.collate_fn,
         )
 
         return val_data_loader
@@ -302,7 +290,7 @@ class WalkDataModule(LightningDataModule):
             pin_memory=True,
             shuffle=False,
             drop_last=True,
-            collate_fn=self.collate_fn,
+            # collate_fn=self.collate_fn,
         )
 
         return test_data_loader

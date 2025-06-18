@@ -147,11 +147,15 @@ class MultiModalTemporalViT(nn.Module):
 
     def forward(self, inputs: dict):
         device = next(self.parameters()).device
-        batch, time = next(iter(inputs.values())).shape[:2]
+        batch = next(iter(inputs.values())).shape[0]
+        time = next(iter(inputs.values())).shape[2]
+
         token_list = []
 
         for name in self.modalities:
-            x = self.embedders[name](inputs[name])  # [B, T, N_patch, D]
+            x = inputs[name]  # [B, C, T, H, W]
+            x = rearrange(x, "b c t h w -> b t c h w")  # 转换为 [B, T, C, H, W]
+            x = self.embedders[name](x)  # [B, T, N_patch, D]
             token_list.append(x)
 
         x = torch.cat(token_list, dim=2)  # [B, T, total_tokens, D]
@@ -180,12 +184,12 @@ if __name__ == "__main__":
         dim_head=64,
         num_frames=8
     )
-    
+
     inputs = {
-        "rgb": torch.randn(2, 8, 3, 224, 224),
-        "flow": torch.randn(2, 8, 2, 224, 224),
-        "mask": torch.randn(2, 8, 1, 224, 224),
-        "kpt": torch.randn(2, 8, 1, 224, 224)
+        "rgb": torch.randn(2, 3, 8, 224, 224),
+        "flow": torch.randn(2, 2, 8, 224, 224),
+        "mask": torch.randn(2, 1, 8, 224, 224),
+        "kpt": torch.randn(2, 1, 8, 224, 224)
     }
     
     outputs = model(inputs)
