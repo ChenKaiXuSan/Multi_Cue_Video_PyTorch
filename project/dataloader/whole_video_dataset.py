@@ -107,7 +107,7 @@ class LabeledGaitVideoDataset(torch.utils.data.Dataset):
         transformed_mask = self.move_transform(mask, 30)
 
         sample_info_dict = {
-            "label": label,
+            "label": torch.tensor(label),
             "rgb": transformed_vframes,
             "flow": transformed_optical_flow,
             "kpt_heatmap": transformed_keypoints_heatmap,

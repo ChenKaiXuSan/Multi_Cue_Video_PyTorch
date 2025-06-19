@@ -21,11 +21,11 @@ data:
   data_info_path: ${data.root_path}/pt_gz # defined gait cycle json path. This path uesd be gait cycle defined dataset.
   index_mapping: ${data.root_path}/index_mapping # training mapping path, this used for cross validation, with different class number.
 
-  num_workers: 0
+  num_workers: 16
   img_size: 224
   sampling: "over" # over, under, none
 
-  batch_size: 1 # this used for default method, without gait cycle defined method.
+  batch_size: 3
 
 model:
   backbone: vit # choices=[3dcnn, 2dcnn, cnn_lstm, two_stream, 3dcnn_atn, vit], help='the backbone of the model'
@@ -35,7 +35,7 @@ model:
   fuse_method: add # add, mul, concat, none
 
 Vit: # vit tiny
-  image_size: 224 # the image size of the vit model
+  image_size: ${data.img_size} # the image size of the vit model
   patch_size: 32 # the patch size of the vit model
   num_classes: ${model.model_class_num} # the number of classes in the vit model
   dim: 192 # the dimension of the vit model
