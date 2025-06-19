@@ -28,5 +28,23 @@
         "data.num_workers=0",
       ]
     },
+    {
+      "name": "3dcnn",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "project.main",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": [
+        "model.model_class_num=3",
+        "train.gpu=1",
+        "train.clip_duration=1",
+        "train.uniform_temporal_subsample_num=8",
+        "model.backbone=3dcnn",
+        "data.num_workers=0",
+        "data.batch_size=1",
+      ]
+    },
   ]
 }

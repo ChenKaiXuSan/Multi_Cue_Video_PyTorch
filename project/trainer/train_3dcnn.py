@@ -41,13 +41,13 @@ from torchmetrics.classification import (
     MulticlassConfusionMatrix,
 )
 
-from project.models.res_3dcnn import Res3DCNN
+from project.models.make_model import select_model
 from project.helper import save_helper
 
 logger = logging.getLogger(__name__)
 
 
-class Res3DCNNTrainer(LightningModule):
+class MultiModal3DCNNTrainer(LightningModule):
     def __init__(self, hparams):
         super().__init__()
 
@@ -57,8 +57,7 @@ class Res3DCNNTrainer(LightningModule):
         self.num_classes = hparams.model.model_class_num
 
         # define model
-        # self.video_cnn = MakeVideoModule(hparams)()
-        self.video_cnn = Res3DCNN(hparams)
+        self.model = select_model(hparams)
 
         # save the hyperparameters to the file and ckpt
         self.save_hyperparameters()
@@ -70,7 +69,7 @@ class Res3DCNNTrainer(LightningModule):
         self._confusion_matrix = MulticlassConfusionMatrix(num_classes=self.num_classes)
 
     def forward(self, x):
-        return self.video_cnn(x)
+        return self.model(x)
 
     def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int):
         # prepare the input and label
@@ -86,7 +85,7 @@ class Res3DCNNTrainer(LightningModule):
             attn_map = attn_map[:20, :, :, :, :]
             label = label[:20]
 
-        video_preds = self.video_cnn(video, attn_map)
+        video_preds = self.model(video, attn_map)
         video_preds_softmax = torch.softmax(video_preds, dim=1)
 
         # check shape
@@ -131,7 +130,7 @@ class Res3DCNNTrainer(LightningModule):
 
         b, c, t, h, w = video.shape
 
-        video_preds = self.video_cnn(video, attn_map)
+        video_preds = self.model(video, attn_map)
         video_preds_softmax = torch.softmax(video_preds, dim=1)
 
         # if b == 1:
@@ -191,7 +190,7 @@ class Res3DCNNTrainer(LightningModule):
 
         b, c, t, h, w = video.shape
 
-        video_preds = self.video_cnn(video, attn_map)
+        video_preds = self.model(video, attn_map)
         video_preds_softmax = torch.softmax(video_preds, dim=1)
 
         # if b == 1:

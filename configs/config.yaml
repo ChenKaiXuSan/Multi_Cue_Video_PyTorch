@@ -28,11 +28,20 @@ data:
   batch_size: 3
 
 model:
-  backbone: vit # choices=[3dcnn, 2dcnn, cnn_lstm, two_stream, 3dcnn_atn, vit], help='the backbone of the model'
+  backbone: vit # choices=[3dcnn, 2dcnn, cnn_lstm, two_stream, vit], help='the backbone of the model'
   model_class_num: 3 # the class num of model. 2 > [ASD, non_ASD]. 3 > [ASD, DHS, LCS_HipOA]. 4 > [ASD, DHS, LCS_HipOA, normal]
   model_depth: 50 # choices=[50, 101, 152], help='the depth of used model'
 
-  fuse_method: add # add, mul, concat, none
+Res3DCNN:
+  # 3D CNN config
+  num_classes: ${model.model_class_num} # the number of classes in the 3d cnn model
+  fuse_method: add # choices=[add, mul, concat, none], help='the fuse method of the 3d cnn model'
+  channels_dict: {
+    rgb: 3, # the channel of rgb
+    flow: 2, # the channel of flow
+    kpt: 1, # the channel of keypoint
+    mask: 1, # the channel of mask
+  } # the channel dict of the 3d cnn model
 
 Vit: # vit tiny
   image_size: ${data.img_size} # the image size of the vit model
