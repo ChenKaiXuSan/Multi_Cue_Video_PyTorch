@@ -115,10 +115,10 @@ class LabeledGaitVideoDataset(torch.utils.data.Dataset):
         }
 
         # visualize the sample image 
-        save_sample(transformed_vframes, "vis/frames", prefix="frame")
-        save_sample(transformed_optical_flow, "vis/optical_flow", prefix="flow")
-        save_sample(transformed_keypoints_heatmap, "vis/keypoints_heatmap", prefix="kpt_heatmap")
-        save_sample(transformed_mask, "vis/mask", prefix="mask")
+        # save_sample(transformed_vframes, "vis/frames", prefix="frame")
+        # save_sample(transformed_optical_flow, "vis/optical_flow", prefix="flow")
+        # save_sample(transformed_keypoints_heatmap, "vis/keypoints_heatmap", prefix="kpt_heatmap")
+        # save_sample(transformed_mask, "vis/mask", prefix="mask")
 
         return sample_info_dict
 
